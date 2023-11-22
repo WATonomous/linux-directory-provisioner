@@ -33,11 +33,17 @@ module.exports = {
     ],
     "no-restricted-syntax": ["off", "ForOfStatement"],
     "no-param-reassign": "off",
+    "consistent-return": "off",
   },
   globals: {
     // zx globals
     $: true,
     question: true,
     argv: true,
+    // jest globals
+    test: true,
+    describe: true,
+    expect: true,
+    jest: true,
   },
 };

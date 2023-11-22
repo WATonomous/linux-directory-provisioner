@@ -90,7 +90,8 @@ describe("getSSHKeys", () => {
     jest.spyOn(fsPromises, "readFile").mockImplementation((path) => {
       if (path === "/home/user1/.ssh/authorized_keys") {
         return Promise.resolve("ssh_key1\nssh_key2\n");
-      } else if (path === "/home/user2/.ssh/authorized_keys") {
+      }
+      if (path === "/home/user2/.ssh/authorized_keys") {
         return Promise.resolve("ssh_key3\nssh_key4\n");
       }
     });
@@ -107,10 +108,12 @@ describe("getExistingDirectory", () => {
     jest.spyOn(fsPromises, "readFile").mockImplementation((path) => {
       if (path === "/etc/passwd") {
         return Promise.resolve("user1:x:1001:1001:User 1:/home/user1:/bin/bash\nuser2:x:1002:1002:User 2:/home/user2:/bin/bash");
-      } else if (path === "/etc/shadow") {
+      }
+      if (path === "/etc/shadow") {
         return Promise.resolve("user1:$6$random_salt$encrypted_password1\nuser2:$6$random_salt$encrypted_password2");
-      } else if (path === "/etc/group") {
-        return Promise.resolve("group1:x:1001:user1\n" + "group2:x:1002:user2\n" + "group3:x:1003:user1,user2");
+      }
+      if (path === "/etc/group") {
+        return Promise.resolve("group1:x:1001:user1\ngroup2:x:1002:user2\ngroup3:x:1003:user1,user2");
       }
     });
 
@@ -164,9 +167,9 @@ describe("getExistingDirectory", () => {
     jest.spyOn(fsPromises, "readFile").mockImplementation((path) => {
       if (path === "/etc/passwd") {
         return Promise.resolve("user1:x:1001:1001:User 1:/home/user1:/bin/bash");
-      } else if (path === "/etc/shadow") {
+      } if (path === "/etc/shadow") {
         return Promise.resolve("user1:$6$random_salt$encrypted_password1\nuser2:$6$random_salt$encrypted_password2");
-      } else if (path === "/etc/group") {
+      } if (path === "/etc/group") {
         return Promise.resolve("group1:x:1001:user1");
       }
     });
