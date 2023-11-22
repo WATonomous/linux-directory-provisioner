@@ -77,7 +77,7 @@ const config = {
       password: "$1$PCSqGwKq$rLcYcRDkg3jHPPs3N.gW6.",
       update_password: "always",
       uid: 1705,
-      primary_group: "rainbowunicornwatocluster",
+      primary_group: "mprw-simfra",
       additional_groups: ["planning-research", "mprw-simfra"],
       shell: "/bin/bash",
     },
@@ -101,9 +101,29 @@ if (!validateConfig(config)) {
 
 console.log(config);
 
+//check if value is primitive
+function isPrimitive(obj) {
+  return obj !== Object(obj);
+}
 function deepEqual(obj1, obj2) {
-  // Compare objects deeply, ignoring top-level key order
-  return JSON.stringify(obj1, Object.keys(obj1).sort()) === JSON.stringify(obj2, Object.keys(obj2).sort());
+  // Derived from https://stackoverflow.com/a/45683145/4527337
+  if (obj1 === obj2)
+    // it's just the same object. No need to compare.
+    return true;
+
+  if (isPrimitive(obj1) && isPrimitive(obj2))
+    // compare primitives
+    return obj1 === obj2;
+
+  if (Object.keys(obj1).length !== Object.keys(obj2).length) return false;
+
+  // compare objects with same number of keys
+  for (let key in obj1) {
+    if (!(key in obj2)) return false; //other object doesn't have this prop
+    if (!deepEqual(obj1[key], obj2[key])) return false;
+  }
+
+  return true;
 }
 
 function diffProperties(obj1, obj2) {
@@ -114,10 +134,10 @@ function diffProperties(obj1, obj2) {
     throw new Error(`Object keys don't match: ${obj1Keys} vs ${obj2Keys}`);
   }
 
-  const out = [];
+  const out = new Set();
   for (const k of obj1Keys) {
     if (!deepEqual(obj1[k], obj2[k])) {
-      out.push(k);
+      out.add(k);
     }
   }
 
@@ -141,26 +161,43 @@ void (async function () {
     .map((t) => ({
       groupname: t[0],
       gid: Number(t[2]),
-      users: t[3] ? t[3].split(",").toSorted() : [],
+      users: t[3] ? t[3].split(",") : [],
     }))
     .reduce((out, g) => {
       out[g.groupname] = g;
       return out;
     }, {});
 
+  const userToGroups = Object.values(groups).reduce((out, g) => {
+    for (const u of g.users) {
+      if (!(u in out)) out[u] = [];
+      out[u].push(g.groupname);
+    }
+    return out;
+  }, {});
+
   const gidToGroupName = Object.values(groups).reduce((out, g) => {
     out[g.gid] = g.groupname;
     return out;
-  });
+  }, {});
 
   const users = userLines
     .map((l) => l.split(":"))
-    .map((t) => ({
-      username: t[0],
-      uid: Number(t[2]),
-      primary_group: gidToGroupName[Number(t[3])],
-      shell: t[6],
-    }))
+    .map((t) => {
+      const username = t[0];
+      const uid = Number(t[2]);
+      const primary_group = gidToGroupName[Number(t[3])];
+      const additional_groups = userToGroups[username]?.filter((g) => g !== primary_group).sort() ?? [];
+      const shell = t[6];
+
+      return {
+        username,
+        uid,
+        primary_group,
+        additional_groups,
+        shell,
+      };
+    })
     .reduce((out, u) => {
       out[u.username] = u;
       return out;
@@ -183,42 +220,36 @@ void (async function () {
   console.log(`Loaded ${Object.keys(users).length} users and ${Object.keys(groups).length} groups`);
   //console.log('passwords', passwords)
   //console.log('groups', groups)
-  //console.log('users without passwords', Object.values(passwords).filter(p=>!p.password))
-  console.log(
-    "groups that don't belong to users:",
-    Object.keys(groups).filter((g) => !(g in users))
-  );
-
-  const configGroupToUsers = config.users.reduce((out, u) => {
-    for (const g of [u.primary_group, ...u.additional_groups]) {
-      if (!(g in out)) out[g] = [];
-      out[g].push(u.username);
-    }
-  });
+  const usersWithoutPasswords = Object.entries(passwords)
+    .filter(([u, p]) => !p)
+    .map(([u, p]) => u);
+  if (usersWithoutPasswords.length > 0) {
+    console.log("WARNING: found users without passwords. This allows impersonation without sudo.", usersWithoutPasswords);
+  }
 
   const configGroups = config.groups.reduce((out, g) => {
-    out[g.groupname] = {
-      ...g,
-      users: configGroupToUsers[g.groupname]?.toSorted() ?? [],
-    };
+    out[g.groupname] = g;
     return out;
-  });
+  }, {});
 
   const configUserToUpdatePassword = config.users.reduce((out, u) => {
     out[u.username] = u.update_password;
     return out;
-  });
+  }, {});
 
   const configPasswords = config.users.reduce((out, u) => {
     out[u.username] = u.password;
     return out;
-  });
+  }, {});
 
   const configUsers = config.users.reduce((out, u) => {
     const { additional_groups, password, update_password, ...rest } = u;
-    out[u.username] = rest;
+    out[u.username] = {
+      ...rest,
+      additional_groups: additional_groups.sort(),
+    };
     return out;
-  });
+  }, {});
 
   const newGroups = Object.keys(configGroups).filter((g) => !(g in groups));
   const groupsToDelete = Object.keys(groups).filter(
@@ -229,24 +260,25 @@ void (async function () {
   );
   const groupPropertyDiff = Object.keys(configGroups)
     .filter((g) => g in groups)
-    .map((g) => [g, diffProperties(configGroups[g], groups[g])])
-    .filter(([g, diffProperties]) => diffProperties.length > 0);
-  const groupModArgs = groupPropertyDiff.map(([g, diffProperties]) => {
+    .map((g) => {
+      const { users, ...existingGroup } = groups[g];
+      return [g, diffProperties(configGroups[g], existingGroup)];
+    })
+    .filter(([g, diff]) => diff.size > 0);
+  const groupModArgs = groupPropertyDiff.map(([g, diff]) => {
     const args = [];
 
-    if ("gid" in diffProperties) {
+    if (diff.has("gid")) {
       throw new Error(
         `Group ${g} has a different GID in the config (${configGroups[g].gid}) than on the system (${groups[g].gid}). This is not supported. Please delete the group and re-create it with the desired GID.`
       );
     }
 
-    // TODO: groupmod does not have a --users option in shadow-utils that comes with Ubuntu 22.04.
-    // So we need to change the code to set groups in usermod instead.
-    // https://unix.stackexchange.com/a/713184/118161
-
-    if (diffProperties.length > 0) {
-      throw new Error(`Missing update functions for the following group properties: ${diffProperties.join(", ")}`);
+    if (diff.size > 0) {
+      throw new Error(`Missing update functions for the following group properties: ${diff.join(", ")}`);
     }
+
+    args.push(g);
 
     return args;
   });
@@ -257,37 +289,51 @@ void (async function () {
       !(u in configUsers) && config.managed_uid_range[0] <= users[u].uid && users[u].uid <= config.managed_uid_range[1]
   );
   const userPropertyDiff = Object.keys(configUsers)
-    .filter((u) => u in users)
+    .filter((u) => !(u in newUsers))
     .map((u) => [u, diffProperties(configUsers[u], users[u])])
-    .filter(([u, diffProperties]) => diff.length > 0);
-  const userModArgs = userPropertyDiff.map(([u, diffProperties]) => {
+    .filter(([u, diff]) => diff.size > 0);
+  const userModArgs = userPropertyDiff.map(([u, diff]) => {
     const args = [];
 
-    if ("uid" in diffProperties) {
+    if (diff.has("uid")) {
       throw new Error(
         `User ${u} has a different UID in the config (${configUsers[u].uid}) than on the system (${users[u].uid}). This is not supported. Please delete the user and re-create it with the desired UID.`
       );
     }
 
-    if ("primary_group" in diffProperties) {
+    if (diff.has("primary_group")) {
       if (!(configUsers[u].primary_group in configGroups)) {
         throw new Error(`User ${u} has a primary group ${configUsers[u].primary_group} that is not in the config`);
       }
       args.push("--gid", configGroups[configUsers[u].primary_group].gid);
-      delete diffProperties["primary_group"];
+      diff.delete("primary_group");
     }
 
-    if ("shell" in diffProperties) {
+    if (diff.has("additional_groups")) {
+      args.push("--groups", configUsers[u].additional_groups.join(","));
+      diff.delete("additional_groups");
+    }
+
+    if (diff.has("shell")) {
       args.push("--shell", configUsers[u].shell);
-      delete diffProperties["shell"];
+      diff.delete("shell");
     }
 
-    if (diffProperties.length > 0) {
-      throw new Error(`Missing update functions for the following user properties: ${diffProperties.join(", ")}`);
+    if (diff.size > 0) {
+      throw new Error(`Missing update functions for the following user properties: ${[...diff].join(", ")}`);
     }
+
+    args.push(u);
 
     return args;
   });
+  console.log("usersToDelete", usersToDelete);
+  console.log("groupsToDelete", groupsToDelete);
+  console.log("newGroups", newGroups);
+  console.log("newUsers", newUsers);
+
+  console.log("groupModArgs", groupModArgs);
+  console.log("userModArgs", userModArgs);
 
   const passwordsToSet = Object.keys(configPasswords).filter(
     (u) => configPasswords[u] !== passwords[u] && (u in newUsers || configUserToUpdatePassword[u] === "always")
