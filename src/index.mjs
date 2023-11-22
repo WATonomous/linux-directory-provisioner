@@ -145,8 +145,8 @@ console.log("usermodArgs", usermodArgs);
 console.log("requiresSSHKeyUpdate", requireSSHKeyUpdate);
 console.log("requiresPasswordUpdate", requirePasswordUpdate);
 
-if (argv.dryRun) {
-  console.log("Dry run, exiting");
+if (argv["dry-run"]) {
+  console.log("Dry run. exiting");
   process.exit(0);
 }
 
