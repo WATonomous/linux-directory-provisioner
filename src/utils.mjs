@@ -205,3 +205,15 @@ export function diffProperties(obj1, obj2) {
 
   return out;
 }
+
+export async function getSSHKeys(usernames, base_dir) {
+  const sshKeyFiles = await Promise.all(
+    usernames.map(async (u) => {
+      const authorizedKeysPath = `${base_dir}/${u}/.ssh/authorized_keys`;
+      const authorizedKeys = await readFile(authorizedKeysPath, { encoding: 'utf8' }).catch((_e) => '');
+      return [u, authorizedKeys.split('\n').filter((l) => l)];
+    }),
+  );
+
+  return Object.fromEntries(sshKeyFiles);
+}

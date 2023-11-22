@@ -3,55 +3,56 @@
 // TODO: find out how to package this: https://dev.to/zauni/create-a-zx-nodejs-script-as-binary-with-pkg-5abf
 import { readFile } from 'node:fs/promises';
 import {
-  validateConfig, getExistingDirectory, getConfiguredDirectory, diffProperties, deepEqual,
+  validateConfig, getExistingDirectory, getConfiguredDirectory, diffProperties, deepEqual, getSSHKeys,
 } from './utils.mjs';
 
-// TODO: make this a proper CLI
-if (process.argv.length !== 4) {
+if (argv._.length !== 1) {
   console.error('Usage: $0 <config.json>');
   process.exit(1);
 }
-const configPath = process.argv[3];
+const configPath = argv._[0];
+console.log("Loading config")
 const config = JSON.parse(await readFile(configPath, { encoding: 'utf8' }));
 
+console.log("Validating config")
 if (!validateConfig(config)) {
   console.error('Invalid config:', validateConfig.errors);
   process.exit(1);
 }
 
-async function getSSHKeys(usernames, base_dir) {
-  const sshKeyFiles = await Promise.all(
-    usernames.map(async (u) => {
-      const authorizedKeysPath = `${base_dir}/${u}/.ssh/authorized_keys`;
-      const authorizedKeys = await readFile(authorizedKeysPath, { encoding: 'utf8' }).catch((_e) => '');
-      return [u, authorizedKeys.split('\n').filter((l) => l)];
-    }),
-  );
-
-  return Object.fromEntries(sshKeyFiles);
-}
-
+console.log('Loading existing directory...');
 const { users, passwords, groups } = await getExistingDirectory();
 
 console.log(`Loaded ${Object.keys(users).length} users and ${Object.keys(groups).length} groups`);
-// console.log('passwords', passwords)
-// console.log('groups', groups)
 const usersWithoutPasswords = Object.entries(passwords)
   .filter(([_u, p]) => !p)
   .map(([u, _p]) => u);
 if (usersWithoutPasswords.length > 0) {
-  console.log('WARNING: found users without passwords. This allows impersonation without sudo.', usersWithoutPasswords);
+  console.warn('WARNING: found users without passwords. This allows impersonation without sudo.', usersWithoutPasswords);
 }
 
+console.log("Loading existing SSH keys")
 const sshKeys = await getSSHKeys(Object.keys(users), config.user_ssh_key_base_dir);
 
+console.log("Parsing config")
 const {
   configGroups, configUsers, configPasswords, configSSHKeys, configUpdatePassword,
 } = getConfiguredDirectory(config);
 
 const newGroups = Object.keys(configGroups).filter((g) => !(g in groups));
+const newUsers = Object.keys(configUsers).filter((u) => !(u in users));
+const usersToDelete = Object.keys(users).filter(
+  // Delete users that satisfies all of the following:
+  // - within the managed UID range
+  // - not in the config
+  (u) => !(u in configUsers) && config.managed_uid_range[0] <= users[u].uid && users[u].uid <= config.managed_uid_range[1],
+);
 const groupsToDelete = Object.keys(groups).filter(
-  (g) => !(g in configGroups) && config.managed_gid_range[0] <= groups[g].gid && groups[g].gid <= config.managed_gid_range[1],
+  // Delete groups that satisfies all of the following:
+  // - within the managed GID range
+  // - not in the config
+  // - not a user group that is already going to be deleted by userdel
+  (g) => !(g in configGroups) && !usersToDelete.includes(g) && config.managed_gid_range[0] <= groups[g].gid && groups[g].gid <= config.managed_gid_range[1],
 );
 const groupPropertyDiff = Object.keys(configGroups)
   .filter((g) => g in groups)
@@ -78,12 +79,6 @@ const groupModArgs = groupPropertyDiff.map(([g, diff]) => {
 
   return args;
 });
-
-const newUsers = Object.keys(configUsers).filter((u) => !(u in users));
-console.log('newUsers', newUsers);
-const usersToDelete = Object.keys(users).filter(
-  (u) => !(u in configUsers) && config.managed_uid_range[0] <= users[u].uid && users[u].uid <= config.managed_uid_range[1],
-);
 const userPropertyDiff = Object.keys(configUsers)
   .filter((u) => !newUsers.includes(u))
   .map((u) => [u, diffProperties(configUsers[u], users[u])])
@@ -125,7 +120,7 @@ const usermodArgs = userPropertyDiff.map(([u, diff]) => {
 const requirePasswordUpdate = Object.keys(configPasswords).filter(
   (u) => configPasswords[u] !== passwords[u] && (newUsers.includes(u) || configUpdatePassword[u] === 'always'),
 );
-const requireSSHKeyUpdate = Object.keys(configSSHKeys).filter((u) => !newUsers.includes(u) && !deepEqual(sshKeys[u], configSSHKeys[u]));
+const requireSSHKeyUpdate = Object.keys(configSSHKeys).filter((u) => newUsers.includes(u) || !deepEqual(sshKeys[u], configSSHKeys[u]));
 
 // Print changes
 console.log('usersToDelete', usersToDelete);
@@ -138,11 +133,13 @@ console.log('usermodArgs', usermodArgs);
 console.log('requiresSSHKeyUpdate', requireSSHKeyUpdate);
 console.log('requiresPasswordUpdate', requirePasswordUpdate);
 
-// Ask for confirmation
-const confirmation = await question('Are you sure you want to apply these changes? [y/N] ');
-if (confirmation !== 'y') {
-  console.log('Aborting');
-  process.exit(1);
+if (argv.confirm !== false) {
+  // Ask for confirmation
+  const confirmation = await question('Are you sure you want to apply these changes? [y/N] ');
+  if (confirmation !== 'y') {
+    console.log('Aborting');
+    process.exit(1);
+  }
 }
 
 // Apply changes
