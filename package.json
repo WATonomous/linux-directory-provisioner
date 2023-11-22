@@ -1,8 +1,8 @@
 {
-  "name": "linux-user-provisioner",
+  "name": "@watonomous/linux-user-provisioner",
   "version": "0.0.1",
   "description": "A tool to provision linux users",
-  "main": "src/index.js",
+  "main": "src/index.mjs",
   "scripts": {
     "lint": "eslint src/**/*.mjs",
     "test": "jest"
