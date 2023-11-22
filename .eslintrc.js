@@ -35,7 +35,9 @@ module.exports = {
     "no-param-reassign": "off",
   },
   globals: {
+    // zx globals
     $: true,
     question: true,
+    argv: true,
   },
 };
