@@ -1,0 +1,14 @@
+{
+  "name": "linux-user-provisioner",
+  "version": "0.0.1",
+  "description": "A tool to provision linux users",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ajv": "^8.12.0"
+  }
+}
