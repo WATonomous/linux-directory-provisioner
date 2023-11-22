@@ -2,7 +2,7 @@
 
 // TODO: find out how to package this: https://dev.to/zauni/create-a-zx-nodejs-script-as-binary-with-pkg-5abf
 import { readFile } from "node:fs/promises";
-import { validateConfig, getExistingDirectory, getConfiguredDirectory, diffProperties, deepEqual, getSSHKeys } from "./utils.mjs";
+import { validateConfig, getExistingDirectory, parseConfig, diffProperties, deepEqual, getSSHKeys } from "./utils.mjs";
 
 if (argv._.length !== 1) {
   console.error("Usage: $0 <config.json>");
@@ -10,31 +10,42 @@ if (argv._.length !== 1) {
 }
 const configPath = argv._[0];
 console.log("Loading config");
+console.time("readConfig");
 const config = JSON.parse(await readFile(configPath, { encoding: "utf8" }));
+console.timeLog("readConfig");
 
 console.log("Validating config");
+console.time("validateConfig");
 if (!validateConfig(config)) {
   console.error("Invalid config:", validateConfig.errors);
   process.exit(1);
 }
+console.timeLog("validateConfig");
 
 console.log("Loading existing directory...");
+console.time("getExistingDirectory");
 const { users, passwords, groups } = await getExistingDirectory();
+console.timeLog("getExistingDirectory");
 
 console.log(`Loaded ${Object.keys(users).length} users and ${Object.keys(groups).length} groups`);
-const usersWithoutPasswords = Object.entries(passwords)
-  .filter(([_u, p]) => !p)
-  .map(([u, _p]) => u);
+
+const usersWithoutPasswords = Object.entries(passwords).filter(([_u, p]) => !p).map(([u, _p]) => u);
 if (usersWithoutPasswords.length > 0) {
   console.warn("WARNING: found users without passwords. This allows impersonation without sudo.", usersWithoutPasswords);
 }
 
 console.log("Loading existing SSH keys");
+console.time("getSSHKeys");
 const sshKeys = await getSSHKeys(Object.keys(users), config.user_ssh_key_base_dir);
+console.timeLog("getSSHKeys");
 
 console.log("Parsing config");
-const { configGroups, configUsers, configPasswords, configSSHKeys, configUpdatePassword } = getConfiguredDirectory(config);
+console.time("parseConfig");
+const { configGroups, configUsers, configPasswords, configSSHKeys, configUpdatePassword } = parseConfig(config);
+console.timeLog("parseConfig");
 
+console.log("Calculating changes");
+console.time("calculateChanges");
 const newGroups = Object.keys(configGroups).filter((g) => !(g in groups));
 const newUsers = Object.keys(configUsers).filter((u) => !(u in users));
 const usersToDelete = Object.keys(users).filter(
@@ -121,6 +132,7 @@ const requirePasswordUpdate = Object.keys(configPasswords).filter(
   (u) => configPasswords[u] !== passwords[u] && (newUsers.includes(u) || configUpdatePassword[u] === "always")
 );
 const requireSSHKeyUpdate = Object.keys(configSSHKeys).filter((u) => newUsers.includes(u) || !deepEqual(sshKeys[u], configSSHKeys[u]));
+console.timeLog("calculateChanges");
 
 // Print changes
 console.log("usersToDelete", usersToDelete);
@@ -133,6 +145,11 @@ console.log("usermodArgs", usermodArgs);
 console.log("requiresSSHKeyUpdate", requireSSHKeyUpdate);
 console.log("requiresPasswordUpdate", requirePasswordUpdate);
 
+if (argv.dryRun) {
+  console.log("Dry run, exiting");
+  process.exit(0);
+}
+
 if (argv.confirm !== false) {
   // Ask for confirmation
   const confirmation = await question("Are you sure you want to apply these changes? [y/N] ");
@@ -144,23 +161,32 @@ if (argv.confirm !== false) {
 
 // Apply changes
 console.log(`Deleting ${usersToDelete.length} users...`);
+console.time("userdel")
 await Promise.all(
   usersToDelete.map(async (u) => {
     await $`userdel --remove ${u}`;
     await $`rm -rf ${config.user_ssh_key_base_dir}/${u}`;
   })
 );
+console.timeLog("userdel")
 
 console.log(`Deleting ${groupsToDelete.length} groups...`);
+console.time("groupdel")
 await Promise.all(groupsToDelete.map((g) => $`groupdel ${g}`));
+console.timeLog("groupdel")
 
 console.log(`Creating ${newGroups.length} groups...`);
+console.time("groupadd")
 await Promise.all(newGroups.map((g) => $`groupadd --gid ${configGroups[g].gid} ${g}`));
+console.timeLog("groupadd")
 
 console.log(`Updating group properties for ${groupModArgs.length} groups...`);
+console.time("groupmod")
 await Promise.all(groupModArgs.map((args) => $`groupmod ${args}`));
+console.timeLog("groupmod")
 
 console.log(`Creating ${newUsers.length} users...`);
+console.time("useradd")
 await Promise.all(
   newUsers.map((u) => {
     const args = [
@@ -180,11 +206,15 @@ await Promise.all(
     return $`useradd ${args} ${u}`;
   })
 );
+console.timeLog("useradd")
 
 console.log(`Updating user properties for ${usermodArgs.length} users...`);
+console.time("usermod")
 await Promise.all(usermodArgs.map((args) => $`usermod ${args}`));
+console.timeLog("usermod")
 
 console.log(`Updating passwords for ${requirePasswordUpdate.length} users...`);
+console.time("chpasswd")
 if (requirePasswordUpdate.length > 0) {
   const p = $`chpasswd -e`.stdio("pipe");
   for (const username of requirePasswordUpdate) {
@@ -192,8 +222,10 @@ if (requirePasswordUpdate.length > 0) {
   }
   p.stdin.end();
 }
+console.timeLog("chpasswd")
 
 console.log(`Updating SSH keys for ${requireSSHKeyUpdate.length} users...`);
+console.time("sshkeys")
 await Promise.all(
   requireSSHKeyUpdate.map(async (username) => {
     const userDir = `${config.user_ssh_key_base_dir}/${username}`;
@@ -207,43 +239,4 @@ await Promise.all(
     await $`echo ${configSSHKeys[username].join("\n")} > ${authorizedKeysPath}`;
   })
 );
-
-// TODO: Execute the following sequence:
-// Delete users
-// Delete groups
-// Create groups
-// Create users
-// Set passwords
-// Populate SSH keys
-
-// TODO:
-// - [ ] Disallow UID/GID changes
-// - [ ] dry-run
-// - [ ] filter for managed user/group range
-// - [ ] update_password on_create/always
-//
-// userdel:
-// https://linux.die.net/man/8/userdel
-// userdel --remove <user> # removes home directory
-//
-// groups:
-// https://www.redhat.com/sysadmin/linux-groups
-// groupadd --gid <gid> <group>
-// grouopdel <group>
-//
-// useradd:
-// https://linuxize.com/post/how-to-create-users-in-linux-using-the-useradd-command/
-// useradd --create-home --uid <uid> --gid <gid> --groups [list_if_exists] --shell [shell_if_exists] username
-//
-// usermod:
-// https://www.geeksforgeeks.org/usermod-command-in-linux-with-examples/
-//
-// set encrypted password:
-// https://unixutils.com/manually-generate-and-set-encrypted-password-using-chpasswd/
-// echo 'username:$1$PCSqGwKq$rLcYcRDkg3jHPPs3N.gW6.' | chpasswd -e
-// https://github.com/google/zx/blob/a9b573e026b16da617d99c1605a71c4242bd81eb/examples/interactive.mjs#L20
-// const p = $`chpasswd -e`.stdio('pipe')
-// https://google.github.io/zx/process-promise#stdin
-// p.stdin.write('username:$1$PCSqGwKq$rLcYcRDkg3jHPPs3N.gW6.\n')
-// p.stdin.end()
-//
+console.timeLog("sshkeys")

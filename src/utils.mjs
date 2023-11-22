@@ -63,7 +63,7 @@ const configSchema = {
 
 export const validateConfig = ajv.compile(configSchema);
 
-export function getConfiguredDirectory(config) {
+export function parseConfig(config) {
   const configGroups = Object.fromEntries(config.groups.map((g) => [g.groupname, g]));
   const configUpdatePassword = Object.fromEntries(config.users.map((u) => [u.username, u.update_password]));
   const configPasswords = Object.fromEntries(config.users.map((u) => [u.username, u.password]));
