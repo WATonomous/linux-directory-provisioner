@@ -1,17 +1,19 @@
 #!/usr/bin/env zx
 
-import { readFile } from "node:fs/promises";
 import { $, stdin, argv, question } from "zx";
 import { getExistingDirectory, parseConfig, diffProperties, deepEqual, getSSHKeys } from "./utils.mjs";
 import { validateConfig } from "./schema.mjs";
 
 function printUsageAndExit() {
-  console.error("Usage: $0 [--dry-run] [--confirm] [--debug] < config.json");
+  console.error("Usage: $0 [--help] [--dry-run] [--confirm] [--debug] < config.json");
   process.exit(1);
 }
 
 if (argv.debug) {
   console.log("argv:", argv);
+}
+if (argv.help) {
+  printUsageAndExit();
 }
 console.time("readConfig");
 console.log("Reading config from stdin...");
