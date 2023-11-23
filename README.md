@@ -16,4 +16,5 @@ npm version patch # or minor or major
 git push --atomic origin main <tag>
 ```
 
-The GitHub Action pipeline will automatically publish the new version to NPM.
+3. Create a release on GitHub with the tag you just pushed.
+4. The GitHub Action pipeline will automatically publish the new version to NPM.
