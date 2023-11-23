@@ -6,6 +6,14 @@
 
 Tool to provision Linux users and groups. Used internally at [WATcloud](https://cloud.watonomous.ca).
 
+## Getting started
+
+1. Prepare a configuration file in the format specified in [src/schema.mjs](./src/schema.mjs).
+2. Run the following command to run the provisioner:
+```bash
+npx @watonomous/linux-directory-provisioner <path_to_config.json>
+```
+
 ## Publishing to NPM
 
 1. Increment the version number in `package.json`:
