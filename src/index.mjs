@@ -5,24 +5,17 @@ import { $, stdin, argv, question } from "zx";
 import { getExistingDirectory, parseConfig, diffProperties, deepEqual, getSSHKeys } from "./utils.mjs";
 import { validateConfig } from "./schema.mjs";
 
+function printUsageAndExit() {
+  console.error("Usage: $0 [--dry-run] [--confirm] [--debug] < config.json");
+  process.exit(1);
+}
+
 if (argv.debug) {
   console.log("argv:", argv);
 }
-if (argv._.length !== 1) {
-  console.error("Usage: $0 <config.json>");
-  process.exit(1);
-}
-const configPath = argv._[0];
-
 console.time("readConfig");
-let rawConfig;
-if (configPath === "-") {
-  console.log("Reading config from stdin...");
-  rawConfig = await stdin();
-} else {
-  console.log(`Reading config from ${configPath}...`);
-  rawConfig = await readFile(configPath, { encoding: "utf8" });
-}
+console.log("Reading config from stdin...");
+const rawConfig = await stdin();
 const config = JSON.parse(rawConfig);
 console.timeLog("readConfig");
 
