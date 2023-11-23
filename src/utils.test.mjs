@@ -117,6 +117,12 @@ describe("getExistingDirectory", () => {
       }
     });
 
+    jest.spyOn(fsPromises, "readdir").mockImplementation((path) => {
+      if (path === "/var/lib/systemd/linger/") {
+        return Promise.resolve(["user1"]);
+      }
+    });
+
     const expectedData = {
       users: {
         user1: {
@@ -155,6 +161,10 @@ describe("getExistingDirectory", () => {
           users: ["user1", "user2"],
         },
       },
+      lingerStates: {
+        user1: true,
+        user2: false,
+      }
     };
 
     const result = await getExistingDirectory();
