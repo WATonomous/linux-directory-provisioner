@@ -120,6 +120,10 @@ export function deepEqual(obj1, obj2) {
   // compare primitives
   { return obj1 === obj2; }
 
+  if (isPrimitive(obj1) || isPrimitive(obj2))
+  // one is primitive but the other isn't.
+  { return false; }
+
   if (Object.keys(obj1).length !== Object.keys(obj2).length) return false;
 
   // compare objects with same number of keys
@@ -153,12 +157,14 @@ export function diffProperties(obj1, obj2) {
   return out;
 }
 
-export async function getSSHKeys(usernames, base_dir) {
+export async function getSSHKeys(users, baseDir) {
   const sshKeyFiles = await Promise.all(
-    usernames.map(async (u) => {
-      const authorizedKeysPath = `${base_dir}/${u}/.ssh/authorized_keys`;
+    users.map(async (u) => {
+      const expandedBaseDir = baseDir.replaceAll('%u', u.username).replaceAll('%U', u.uid);
+      const authorizedKeysPath = `${expandedBaseDir}/authorized_keys`;
+      console.log(`Reading SSH keys for ${u.username} from ${authorizedKeysPath}`)
       const authorizedKeys = await readFile(authorizedKeysPath, { encoding: 'utf8' }).catch((_e) => '');
-      return [u, authorizedKeys.split('\n').filter((l) => l)];
+      return [u.username, authorizedKeys.split('\n').filter((l) => l)];
     }),
   );
 

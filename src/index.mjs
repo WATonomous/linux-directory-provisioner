@@ -1,5 +1,6 @@
 #!/usr/bin/env zx
 
+import path from "path";
 import { $, stdin, argv, question } from "zx";
 import { getExistingDirectory, parseConfig, diffProperties, deepEqual, getSSHKeys } from "./utils.mjs";
 import { validateConfig } from "./schema.mjs";
@@ -43,7 +44,7 @@ if (usersWithoutPasswords.length > 0) {
 
 console.log("Loading existing SSH keys");
 console.time("getSSHKeys");
-const sshKeys = await getSSHKeys(Object.keys(users), config.user_ssh_key_base_dir);
+const sshKeys = await getSSHKeys(Object.values(users), config.user_ssh_key_base_dir);
 console.timeLog("getSSHKeys");
 
 console.log("Parsing config");
@@ -247,14 +248,26 @@ console.log(`Updating SSH keys for ${requireSSHKeyUpdate.length} users...`);
 console.time("sshkeys")
 await Promise.all(
   requireSSHKeyUpdate.map(async (username) => {
-    const userDir = `${config.user_ssh_key_base_dir}/${username}`;
-    const sshDir = `${userDir}/.ssh`;
-    const authorizedKeysPath = `${sshDir}/authorized_keys`;
-    await $`mkdir -p ${sshDir}`;
-    await $`chmod 700 ${userDir}`;
-    await $`chmod 700 ${sshDir}`;
+    const expandedBaseDir = config.user_ssh_key_base_dir.replaceAll("%u", username).replaceAll("%U", configUsers[username].uid);
+    // commonDir is the part of the path that is the same for all users
+    const commonDir = config.user_ssh_key_base_dir.substring(0, config.user_ssh_key_base_dir.indexOf("%"));
+    // relativeDirs is paths leading up to the SSH keys from commonDir
+    const relativeDirs = path.relative(commonDir, expandedBaseDir).split(path.sep);
+
+    const authorizedKeysPath = `${expandedBaseDir}/authorized_keys`;
+    await $`mkdir -p ${expandedBaseDir}`;
     await $`touch ${authorizedKeysPath}`;
-    await $`chown -R ${username}:${configUsers[username].primary_group} ${userDir}`;
+
+    // Set the proper permissions on the user-specific directory
+    // and the directory containing the SSH keys
+    await $`chmod 700 ${path.join(commonDir, relativeDirs[0])}`;
+    await $`chmod 700 ${expandedBaseDir}`;
+
+    // Set the ownership of all directories leading up to the SSH keys
+    const chownPaths = relativeDirs.map((_, i) => path.join(commonDir, ...relativeDirs.slice(0, i + 1)));
+    await $`chown ${username}:${configUsers[username].primary_group} ${chownPaths} ${authorizedKeysPath}`;
+
+    // Write the SSH keys
     await $`echo ${configSSHKeys[username].join("\n")} > ${authorizedKeysPath}`;
   })
 );

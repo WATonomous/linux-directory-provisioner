@@ -53,7 +53,11 @@ export const configSchema = {
       minItems: 2,
       maxItems: 2,
     },
-    user_ssh_key_base_dir: { type: "string", description: "Base directory for user SSH keys.", default: "/home" },
+    user_ssh_key_base_dir: {
+      type: "string",
+      description: "Base directory for user SSH keys. Supports templating with %u (username) and %U (uid)",
+      default: "/home/%u/.ssh",
+    },
   },
   required: ["users", "groups"],
   additionalProperties: false,
