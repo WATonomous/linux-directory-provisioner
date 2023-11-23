@@ -1,7 +1,7 @@
 {
-  "name": "@watonomous/linux-user-provisioner",
+  "name": "@watonomous/linux-directory-provisioner",
   "version": "0.0.3-alpha.3",
-  "description": "A tool to provision linux users",
+  "description": "A tool to provision linux users and groups",
   "main": "dist/index.mjs",
   "bin": {
     "provision-directory": "dist/index.mjs"
