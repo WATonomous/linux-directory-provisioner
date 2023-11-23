@@ -16,6 +16,7 @@ const userSchema = {
     },
     shell: { type: "string", default: "/bin/bash" },
     ssh_authorized_keys: { type: "array", items: { type: "string" }, default: [] },
+    linger: { type: "boolean", default: false },
   },
   required: ["username", "password", "update_password", "uid", "primary_group"],
   additionalProperties: false,

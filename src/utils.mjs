@@ -1,10 +1,11 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 
 export function parseConfig(config) {
   const configGroups = Object.fromEntries(config.groups.map((g) => [g.groupname, g]));
   const configUpdatePassword = Object.fromEntries(config.users.map((u) => [u.username, u.update_password]));
   const configPasswords = Object.fromEntries(config.users.map((u) => [u.username, u.password]));
   const configSSHKeys = Object.fromEntries(config.users.map((u) => [u.username, u.ssh_authorized_keys]));
+  const configLinger = Object.fromEntries(config.users.map((u) => [u.username, u.linger]));
 
   const configUsers = config.users.reduce((out, u) => {
     const {
@@ -12,6 +13,7 @@ export function parseConfig(config) {
       password: _password,
       update_password: _update_password,
       ssh_authorized_keys: _ssh_authorized_keys,
+      linger: _linger,
       ...rest
     } = u;
     out[u.username] = {
@@ -22,16 +24,22 @@ export function parseConfig(config) {
   }, {});
 
   return {
-    configGroups, configUsers, configPasswords, configSSHKeys, configUpdatePassword,
+    configGroups,
+    configUsers,
+    configPasswords,
+    configSSHKeys,
+    configUpdatePassword,
+    configLinger,
   };
 }
 
 export async function getExistingDirectory() {
   // Load current configuration from system
-  const [userLines, shadowLines, groupLines] = await Promise.all([
-    readFile('/etc/passwd', { encoding: 'utf8' }).then((s) => s.split('\n').filter((l) => l)),
-    readFile('/etc/shadow', { encoding: 'utf8' }).then((s) => s.split('\n').filter((l) => l)),
-    readFile('/etc/group', { encoding: 'utf8' }).then((s) => s.split('\n').filter((l) => l)),
+  const [userLines, shadowLines, groupLines, lingerUsernames] = await Promise.all([
+    readFile("/etc/passwd", { encoding: "utf8" }).then((s) => s.split("\n").filter((l) => l)),
+    readFile("/etc/shadow", { encoding: "utf8" }).then((s) => s.split("\n").filter((l) => l)),
+    readFile("/etc/group", { encoding: "utf8" }).then((s) => s.split("\n").filter((l) => l)),
+    readdir("/var/lib/systemd/linger/"),
   ]);
 
   const groups = groupLines
@@ -93,7 +101,9 @@ export async function getExistingDirectory() {
     throw new Error(`user and password lists don't match up! users: ${Object.keys(users)}, passwords: ${Object.keys(passwords)}`);
   }
 
-  return { users, passwords, groups };
+  const lingerStates = Object.fromEntries(Object.keys(users).map((u) => [u, lingerUsernames.includes(u)]));
+
+  return { users, passwords, groups, lingerStates };
 }
 
 // check if value is primitive

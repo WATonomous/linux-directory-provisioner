@@ -31,7 +31,7 @@ console.timeLog("validateConfig");
 
 console.log("Loading existing directory...");
 console.time("getExistingDirectory");
-const { users, passwords, groups } = await getExistingDirectory();
+const { users, passwords, groups, lingerStates } = await getExistingDirectory();
 console.timeLog("getExistingDirectory");
 
 console.log(`Loaded ${Object.keys(users).length} users and ${Object.keys(groups).length} groups`);
@@ -48,7 +48,7 @@ console.timeLog("getSSHKeys");
 
 console.log("Parsing config");
 console.time("parseConfig");
-const { configGroups, configUsers, configPasswords, configSSHKeys, configUpdatePassword } = parseConfig(config);
+const { configGroups, configUsers, configPasswords, configSSHKeys, configUpdatePassword, configLinger } = parseConfig(config);
 console.timeLog("parseConfig");
 
 console.log("Calculating changes");
@@ -139,6 +139,7 @@ const requirePasswordUpdate = Object.keys(configPasswords).filter(
   (u) => configPasswords[u] !== passwords[u] && (newUsers.includes(u) || configUpdatePassword[u] === "always")
 );
 const requireSSHKeyUpdate = Object.keys(configSSHKeys).filter((u) => newUsers.includes(u) || !deepEqual(sshKeys[u], configSSHKeys[u]));
+const requireLingerUpdate = Object.keys(configLinger).filter((u) => newUsers.includes(u) || lingerStates[u] !== configLinger[u]);
 console.timeLog("calculateChanges");
 
 // Print changes
@@ -151,6 +152,7 @@ console.log("groupModArgs", groupModArgs);
 console.log("usermodArgs", usermodArgs);
 console.log("requiresSSHKeyUpdate", requireSSHKeyUpdate);
 console.log("requiresPasswordUpdate", requirePasswordUpdate);
+console.log("requireLingerUpdate", requireLingerUpdate);
 
 if (argv["dry-run"]) {
   console.log("Dry run. exiting");
@@ -257,3 +259,14 @@ await Promise.all(
   })
 );
 console.timeLog("sshkeys")
+
+console.log(`Updating linger state for ${requireLingerUpdate.length} users...`);
+console.time("linger")
+for (const username of requireLingerUpdate) {
+  if (configLinger[username]) {
+    await $`loginctl enable-linger ${username}`;
+  } else {
+    await $`loginctl disable-linger ${username}`;
+  }
+}
+console.timeLog("linger")
