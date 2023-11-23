@@ -169,9 +169,13 @@ if (argv.confirm !== false) {
 // Apply changes
 console.log(`Deleting ${usersToDelete.length} users...`);
 console.time("userdel")
+// delete users
+for (const u of usersToDelete) {
+  await $`userdel --remove ${u}`;
+}
+// delete SSH keys
 await Promise.all(
   usersToDelete.map(async (u) => {
-    await $`userdel --remove ${u}`;
     await $`rm -rf ${config.user_ssh_key_base_dir}/${u}`;
   })
 );
@@ -179,45 +183,51 @@ console.timeLog("userdel")
 
 console.log(`Deleting ${groupsToDelete.length} groups...`);
 console.time("groupdel")
-await Promise.all(groupsToDelete.map((g) => $`groupdel ${g}`));
+for (const g of groupsToDelete) {
+  await $`groupdel ${g}`;
+}
 console.timeLog("groupdel")
 
 console.log(`Creating ${newGroups.length} groups...`);
 console.time("groupadd")
-await Promise.all(newGroups.map((g) => $`groupadd --gid ${configGroups[g].gid} ${g}`));
+for (const g of newGroups) {
+  await $`groupadd --gid ${configGroups[g].gid} ${g}`;
+}
 console.timeLog("groupadd")
 
 console.log(`Updating group properties for ${groupModArgs.length} groups...`);
 console.time("groupmod")
-await Promise.all(groupModArgs.map((args) => $`groupmod ${args}`));
+for (const args of groupModArgs) {
+  await $`groupmod ${args}`;
+}
 console.timeLog("groupmod")
 
 console.log(`Creating ${newUsers.length} users...`);
 console.time("useradd")
-await Promise.all(
-  newUsers.map((u) => {
-    const args = [
-      "--create-home",
-      "--uid",
-      configUsers[u].uid,
-      "--gid",
-      configGroups[configUsers[u].primary_group].gid,
-      "--shell",
-      configUsers[u].shell,
-    ];
+for (const u of newUsers) {
+  const args = [
+    "--create-home",
+    "--uid",
+    configUsers[u].uid,
+    "--gid",
+    configGroups[configUsers[u].primary_group].gid,
+    "--shell",
+    configUsers[u].shell,
+  ];
 
-    if (configUsers[u].additional_groups.length > 0) {
-      args.push("--groups", configUsers[u].additional_groups.join(","));
-    }
+  if (configUsers[u].additional_groups.length > 0) {
+    args.push("--groups", configUsers[u].additional_groups.join(","));
+  }
 
-    return $`useradd ${args} ${u}`;
-  })
-);
+  await $`useradd ${args} ${u}`;
+}
 console.timeLog("useradd")
 
 console.log(`Updating user properties for ${usermodArgs.length} users...`);
 console.time("usermod")
-await Promise.all(usermodArgs.map((args) => $`usermod ${args}`));
+for (const args of usermodArgs) {
+  await $`usermod ${args}`;
+}
 console.timeLog("usermod")
 
 console.log(`Updating passwords for ${requirePasswordUpdate.length} users...`);

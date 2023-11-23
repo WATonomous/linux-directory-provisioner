@@ -34,6 +34,7 @@ module.exports = {
     "no-restricted-syntax": ["off", "ForOfStatement"],
     "no-param-reassign": "off",
     "consistent-return": "off",
+    "no-await-in-loop": "off",
   },
   globals: {
     // zx globals
