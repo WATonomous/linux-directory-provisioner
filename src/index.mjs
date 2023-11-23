@@ -3,15 +3,24 @@
 import { readFile } from "node:fs/promises";
 import { getExistingDirectory, parseConfig, diffProperties, deepEqual, getSSHKeys } from "./utils.mjs";
 import { validateConfig } from "./schema.mjs";
+import { $, stdin, argv, question } from "zx";
 
 if (argv._.length !== 1) {
   console.error("Usage: $0 <config.json>");
   process.exit(1);
 }
 const configPath = argv._[0];
-console.log("Loading config");
+
 console.time("readConfig");
-const config = JSON.parse(await readFile(configPath, { encoding: "utf8" }));
+let rawConfig;
+if (configPath === "-") {
+  console.log("Reading config from stdin...");
+  rawConfig = await stdin();
+} else {
+  console.log(`Reading config from ${configPath}...`);
+  rawConfig = await readFile(configPath, { encoding: "utf8" });
+}
+const config = JSON.parse(rawConfig);
 console.timeLog("readConfig");
 
 console.log("Validating config");
