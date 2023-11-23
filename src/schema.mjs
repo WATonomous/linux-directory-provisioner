@@ -1,3 +1,5 @@
+import Ajv from 'ajv';
+
 const userSchema = {
   type: "object",
   properties: {
@@ -55,3 +57,7 @@ export const configSchema = {
   required: ["users", "groups"],
   additionalProperties: false,
 };
+
+const ajv = new Ajv({ allErrors: true, strict: true, useDefaults: true });
+
+export const validateConfig = ajv.compile(configSchema);

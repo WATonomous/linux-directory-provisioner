@@ -1,10 +1,4 @@
-import Ajv from 'ajv';
 import { readFile } from 'node:fs/promises';
-import { configSchema } from './schema.mjs';
-
-const ajv = new Ajv({ allErrors: true, strict: true, useDefaults: true });
-
-export const validateConfig = ajv.compile(configSchema);
 
 export function parseConfig(config) {
   const configGroups = Object.fromEntries(config.groups.map((g) => [g.groupname, g]));

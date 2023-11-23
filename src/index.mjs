@@ -1,8 +1,8 @@
 #!/usr/bin/env zx
 
-// TODO: find out how to package this: https://dev.to/zauni/create-a-zx-nodejs-script-as-binary-with-pkg-5abf
 import { readFile } from "node:fs/promises";
-import { validateConfig, getExistingDirectory, parseConfig, diffProperties, deepEqual, getSSHKeys } from "./utils.mjs";
+import { getExistingDirectory, parseConfig, diffProperties, deepEqual, getSSHKeys } from "./utils.mjs";
+import { validateConfig } from "./schema.mjs";
 
 if (argv._.length !== 1) {
   console.error("Usage: $0 <config.json>");
