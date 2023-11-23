@@ -5,6 +5,9 @@ import { $, stdin, argv, question } from "zx";
 import { getExistingDirectory, parseConfig, diffProperties, deepEqual, getSSHKeys } from "./utils.mjs";
 import { validateConfig } from "./schema.mjs";
 
+if (argv.debug) {
+  console.log("argv:", argv);
+}
 if (argv._.length !== 1) {
   console.error("Usage: $0 <config.json>");
   process.exit(1);
