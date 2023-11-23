@@ -162,7 +162,6 @@ export async function getSSHKeys(users, baseDir) {
     users.map(async (u) => {
       const expandedBaseDir = baseDir.replaceAll('%u', u.username).replaceAll('%U', u.uid);
       const authorizedKeysPath = `${expandedBaseDir}/authorized_keys`;
-      console.log(`Reading SSH keys for ${u.username} from ${authorizedKeysPath}`)
       const authorizedKeys = await readFile(authorizedKeysPath, { encoding: 'utf8' }).catch((_e) => '');
       return [u.username, authorizedKeys.split('\n').filter((l) => l)];
     }),

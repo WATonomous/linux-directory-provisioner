@@ -79,8 +79,11 @@ describe("diffProperties", () => {
 describe("getSSHKeys", () => {
   // Test case: Getting SSH keys for multiple users
   test("should return SSH keys for multiple users", async () => {
-    const usernames = ["user1", "user2"];
-    const base_dir = "/home";
+    const users = [
+      { username: "user1", uid: 1001 },
+      { username: "user2", uid: 1002 },
+    ]
+    const base_dir = "/home/%u/.ssh";
     const expectedKeys = {
       user1: ["ssh_key1", "ssh_key2"],
       user2: ["ssh_key3", "ssh_key4"],
@@ -96,7 +99,32 @@ describe("getSSHKeys", () => {
       }
     });
 
-    const result = await getSSHKeys(usernames, base_dir);
+    const result = await getSSHKeys(users, base_dir);
+    expect(result).toEqual(expectedKeys);
+  });
+
+  test("should template %U to the user's UID", async () => {
+    const users = [
+      { username: "user1", uid: 1001 },
+      { username: "user2", uid: 1002 },
+    ];
+    const base_dir = "/home/%U/.ssh";
+    const expectedKeys = {
+      user1: ["ssh_key1_uid", "ssh_key2_uid"],
+      user2: ["ssh_key3_uid", "ssh_key4_uid"],
+    };
+
+    // Mock the readFile function
+    jest.spyOn(fsPromises, "readFile").mockImplementation((path) => {
+      if (path === "/home/1001/.ssh/authorized_keys") {
+        return Promise.resolve("ssh_key1_uid\nssh_key2_uid\n");
+      }
+      if (path === "/home/1002/.ssh/authorized_keys") {
+        return Promise.resolve("ssh_key3_uid\nssh_key4_uid\n");
+      }
+    });
+
+    const result = await getSSHKeys(users, base_dir);
     expect(result).toEqual(expectedKeys);
   });
 });
