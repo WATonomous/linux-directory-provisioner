@@ -1,6 +1,6 @@
 {
   "name": "@watonomous/linux-user-provisioner",
-  "version": "0.0.3-alpha.0",
+  "version": "0.0.3-alpha.1",
   "description": "A tool to provision linux users",
   "main": "dist/index.mjs",
   "bin": {
