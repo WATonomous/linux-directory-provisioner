@@ -1,9 +1,9 @@
 #!/usr/bin/env zx
 
 import { readFile } from "node:fs/promises";
+import { $, stdin, argv, question } from "zx";
 import { getExistingDirectory, parseConfig, diffProperties, deepEqual, getSSHKeys } from "./utils.mjs";
 import { validateConfig } from "./schema.mjs";
-import { $, stdin, argv, question } from "zx";
 
 if (argv._.length !== 1) {
   console.error("Usage: $0 <config.json>");
