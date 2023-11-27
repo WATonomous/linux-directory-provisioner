@@ -1,9 +1,12 @@
 #!/usr/bin/env zx
 
+import './patch.mjs';
+
 import path from "path";
 import { $, stdin, argv, question } from "zx";
 import { getExistingDirectory, parseConfig, diffProperties, deepEqual, getSSHKeys } from "./utils.mjs";
 import { validateConfig } from "./schema.mjs";
+
 
 function printUsageAndExit() {
   console.error("Usage: $0 [--help] [--dry-run] [--confirm] [--debug] < config.json");
