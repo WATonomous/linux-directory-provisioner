@@ -32,6 +32,50 @@ const groupSchema = {
   additionalProperties: false,
 };
 
+const xfsQuotaConfig = {
+  type: "object",
+  required: ["path"],
+  properties: {
+    path: { type: "string" },
+    // sudo xfs_quota <path> -x -c "limit -d bsoft=<bsoft> bhard=<bhard>"
+    default_user_quota: {
+      type: "object",
+      properties: {
+        bytes_soft_limit: {
+          description:
+            "Soft limit in bytes. Set to `0` to disable this limit. Supports the following suffixes for readability: `Ki` (multiples of 2^10), `Mi` (multiples of 2^20), `Gi` (multiples of 2^30).",
+          type: "string",
+          pattern: "^[0-9]+(Ki|Mi|Gi)?$",
+          default: "0",
+        },
+        bytes_hard_limit: {
+          description:
+            "Hard limit in bytes. Set to `0` to disable this limit. Supports the following suffixes for readability: `Ki` (multiples of 2^10), `Mi` (multiples of 2^20), `Gi` (multiples of 2^30).",
+          type: "string",
+          pattern: "^[0-9]+(Ki|Mi|Gi)?$",
+          default: "0",
+        },
+        inodes_soft_limit: {
+          type: "string",
+          description:
+            "Soft limit in inodes. Set to `0` to disable this limit. Supports the following suffixes for readability: `k` (multiples of 10^3), `m` (multiples of 10^6), `g` (multiples of 10^9), `t` (multiples of 10^12).",
+          pattern: "^[0-9]+(k|m|g|t)?$",
+          default: "0",
+        },
+        inodes_hard_limit: {
+          type: "string",
+          description:
+            "Hard limit in inodes. Set to `0` to disable this limit. Supports the following suffixes for readability: `k` (multiples of 10^3), `m` (multiples of 10^6), `g` (multiples of 10^9), `t` (multiples of 10^12).",
+          pattern: "^[0-9]+(k|m|g|t)?$",
+          default: "0",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  additionalProperties: false,
+};
+
 export const configSchema = {
   type: "object",
   properties: {
@@ -58,8 +102,13 @@ export const configSchema = {
       description: "Base directory for user SSH keys. Supports templating with %u (username) and %U (uid)",
       default: "/home/%u/.ssh",
     },
+    xfs_quota_config: {
+      type: "array",
+      items: xfsQuotaConfig,
+      default: [],
+    }
   },
-  required: ["users", "groups"],
+  required: ["users", "groups", "managed_uid_range", "managed_gid_range"],
   additionalProperties: false,
 };
 
