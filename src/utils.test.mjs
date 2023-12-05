@@ -1,5 +1,5 @@
 import fsPromises from "node:fs/promises";
-import { deepEqual, getSSHKeys, diffProperties, getExistingDirectory } from "./utils";
+import { deepEqual, getSSHKeys, diffProperties, getExistingDirectory, parseIECSize, objectMap } from "./utils";
 
 describe("deepEqual", () => {
   // Test case: Comparing two identical objects
@@ -213,5 +213,66 @@ describe("getExistingDirectory", () => {
     });
 
     await expect(getExistingDirectory()).rejects.toThrow("user and password lists don't match up! users: user1, passwords: user1,user2");
+  });
+});
+
+describe("objectMap", () => {
+  // Test case: Mapping empty object
+  test("should return an empty object when mapping an empty object", () => {
+    const obj = {};
+    const result = objectMap(obj, (value) => value);
+    const expected = {};
+    expect(result).toEqual(expected);
+  });
+
+  // Test case: Mapping object values
+  test("should map object values using the provided function", () => {
+    const obj = { a: 1, b: 2, c: 3 };
+    const result = objectMap(obj, (value) => value * 2);
+    const expected = { a: 2, b: 4, c: 6 };
+    expect(result).toEqual(expected);
+  });
+});
+
+describe("parseIECSize", () => {
+  // Test case: Valid size string without unit
+  test("should return the parsed size when given a valid size string without unit", () => {
+    const sizeString = "100";
+    const expectedSize = 100;
+    expect(parseIECSize(sizeString)).toBe(expectedSize);
+  });
+
+  // Test case: Valid size string with unit 'k'
+  test("should return the parsed size when given a valid size string with unit 'k'", () => {
+    const sizeString = "10k";
+    const expectedSize = 10240;
+    expect(parseIECSize(sizeString)).toBe(expectedSize);
+  });
+
+  // Test case: Valid size string with unit 'm'
+  test("should return the parsed size when given a valid size string with unit 'm'", () => {
+    const sizeString = "5m";
+    const expectedSize = 5242880;
+    expect(parseIECSize(sizeString)).toBe(expectedSize);
+  });
+
+  // Test case: Valid size string with unit 'g'
+  test("should return the parsed size when given a valid size string with unit 'g'", () => {
+    const sizeString = "2g";
+    const expectedSize = 2147483648;
+    expect(parseIECSize(sizeString)).toBe(expectedSize);
+  });
+
+  // Test case: Valid size string with unit 't'
+  test("should return the parsed size when given a valid size string with unit 't'", () => {
+    const sizeString = "1t";
+    const expectedSize = 1099511627776;
+    expect(parseIECSize(sizeString)).toBe(expectedSize);
+  });
+
+  // Test case: Invalid size string
+  test("should throw an error when given an invalid size string", () => {
+    const sizeString = "abc";
+    expect(() => parseIECSize(sizeString)).toThrow("Invalid size string: abc");
   });
 });

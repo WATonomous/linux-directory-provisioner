@@ -102,12 +102,12 @@ export const configSchema = {
       description: "Base directory for user SSH keys. Supports templating with %u (username) and %U (uid)",
       default: "/home/%u/.ssh",
     },
-    // sudo xfs_quota <path> -x -c "limit -d bsoft=<bsoft> bhard=<bhard> isoft=<isoft> ihard=<ihard>"
-    xfs_default_quotas: {
+    // XFS default quota can be set using `sudo xfs_quota <path> -x -c "limit -d bsoft=<bsoft> bhard=<bhard> isoft=<isoft> ihard=<ihard>"`
+    xfs_default_user_quota: {
       type: "array",
       items: quotaSpec,
       default: [],
-    }
+    },
   },
   required: ["users", "groups", "managed_uid_range", "managed_gid_range"],
   additionalProperties: false,

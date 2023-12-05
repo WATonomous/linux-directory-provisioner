@@ -5,7 +5,7 @@ import './patch.mjs';
 import path from "path";
 import { $, stdin, argv, question } from "zx";
 import { readFile } from "node:fs/promises";
-import { getExistingDirectory, parseConfig, diffProperties, deepEqual, getSSHKeys } from "./utils.mjs";
+import { getExistingDirectory, parseConfig, diffProperties, deepEqual, getSSHKeys, getDiskQuota, unique } from "./utils.mjs";
 import { validateConfig } from "./schema.mjs";
 
 
@@ -24,6 +24,10 @@ if (!argv.config) {
   console.error("Missing required argument --config");
   printUsageAndExit(1);
 }
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+// Load, validate, and parse config
+/////////////////////////////////////////////////////////////////////////////////////////////////
 
 console.time("readConfig");
 let config;
@@ -44,6 +48,24 @@ if (!validateConfig(config)) {
 }
 console.timeLog("validateConfig");
 
+console.log("Parsing config");
+console.time("parseConfig");
+const {
+  configGroups,
+  configUsers,
+  configPasswords,
+  configSSHKeys,
+  configUpdatePassword,
+  configLinger,
+  configDiskUserQuotaOverrides,
+  xfsDefaultDiskUserQuota,
+} = parseConfig(config);
+console.timeLog("parseConfig");
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+// Load existing directory
+/////////////////////////////////////////////////////////////////////////////////////////////////
+
 console.log("Loading existing directory...");
 console.time("getExistingDirectory");
 const { users, passwords, groups, lingerStates } = await getExistingDirectory();
@@ -61,10 +83,24 @@ console.time("getSSHKeys");
 const sshKeys = await getSSHKeys(Object.values(users), config.user_ssh_key_base_dir);
 console.timeLog("getSSHKeys");
 
-console.log("Parsing config");
-console.time("parseConfig");
-const { configGroups, configUsers, configPasswords, configSSHKeys, configUpdatePassword, configLinger } = parseConfig(config);
-console.timeLog("parseConfig");
+console.log("Loading existing disk quota");
+console.time("getDiskQuota");
+const diskQuota = await getDiskQuota(unique([...config.xfs_default_user_quota.map(q => q.path), ...Object.keys(configDiskUserQuotaOverrides)]));
+console.timeLog("getDiskQuota");
+
+// TODO: default user quota changes (per path)
+console.log("diskQuota", diskQuota);
+console.log(diskQuota['/var/lib/cluster'][0])
+console.log(xfsDefaultDiskUserQuota['/var/lib/cluster'])
+
+// TODO: user quota changes (per path)
+// new: in config but not existing
+// delete: existing (within the managed uid range) but not in config
+// update: in config and existing, but different
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+// Calculate changes
+/////////////////////////////////////////////////////////////////////////////////////////////////
 
 console.log("Calculating changes");
 console.time("calculateChanges");
