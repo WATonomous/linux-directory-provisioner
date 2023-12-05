@@ -4,25 +4,36 @@ import './patch.mjs';
 
 import path from "path";
 import { $, stdin, argv, question } from "zx";
+import { readFile } from "node:fs/promises";
 import { getExistingDirectory, parseConfig, diffProperties, deepEqual, getSSHKeys } from "./utils.mjs";
 import { validateConfig } from "./schema.mjs";
 
 
-function printUsageAndExit() {
-  console.error("Usage: $0 [--help] [--dry-run] [--confirm] [--debug] < config.json");
-  process.exit(1);
+function printUsageAndExit(exitCode = 0) {
+  console.error("Usage: $0 [--help] [--dry-run] [--no-confirm] [--debug] --config=config.json");
+  process.exit(exitCode);
 }
 
 if (argv.debug) {
   console.log("argv:", argv);
 }
 if (argv.help) {
-  printUsageAndExit();
+  printUsageAndExit(0);
 }
+if (!argv.config) {
+  console.error("Missing required argument --config");
+  printUsageAndExit(1);
+}
+
 console.time("readConfig");
-console.log("Reading config from stdin...");
-const rawConfig = await stdin();
-const config = JSON.parse(rawConfig);
+let config;
+if (argv.config === "-") {
+  console.log("Reading config from stdin...");
+  config = await stdin().then(JSON.parse);
+} else {
+  console.log(`Reading config from ${argv.config}...`);
+  config = await readFile(argv.config, "utf8").then(JSON.parse);
+}
 console.timeLog("readConfig");
 
 console.log("Validating config");
