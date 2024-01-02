@@ -115,10 +115,17 @@ export function parseConfig(config) {
     // convert to object of the form { <uid>: { ...quotaConfig } }
     (v) => Object.fromEntries(v.map((x) => [x[1], x[2]]))
   );
-  const xfsDefaultDiskUserQuota = Object.fromEntries(config.xfs_default_user_quota.map(normalizeDiskQuota).map((d) => {
-    const { path, ...quotaConfig } = d
-    return [path, quotaConfig];
-  }));
+  // XFS disk quota is implemented as a quota on the root user. The root user is not constrained by quotas.
+  for (const quota of config.xfs_default_user_quota) {
+    const { path, ...quotaConfig } = normalizeDiskQuota(quota);
+    if (!(path in configUserDiskQuota)) {
+      configUserDiskQuota[path] = {};
+    }
+    if ('0' in configUserDiskQuota[path]) {
+      throw new ValueError(`The root user (uid 0) already has a configured quota for path ${path}! This is the same as setting the xfs_default_user_quota property.`)
+    }
+    configUserDiskQuota[path]['0'] = quotaConfig;
+  }
 
   const configUsers = config.users.reduce((out, u) => {
     const {
@@ -145,7 +152,6 @@ export function parseConfig(config) {
     configUpdatePassword,
     configLinger,
     configUserDiskQuota,
-    xfsDefaultDiskUserQuota,
   };
 }
 

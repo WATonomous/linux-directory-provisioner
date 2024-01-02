@@ -68,7 +68,6 @@ const {
   configUpdatePassword,
   configLinger,
   configUserDiskQuota,
-  xfsDefaultDiskUserQuota,
 } = parseConfig(config);
 console.timeLog("parseConfig");
 
@@ -98,9 +97,6 @@ console.log(`Loading disk quota for the following path(s): ${diskQuotaPaths.join
 console.time("getDiskQuota");
 const diskQuota = await getDiskQuota(diskQuotaPaths);
 console.timeLog("getDiskQuota");
-
-// TODO: implement setting xfs default quota
-console.log(xfsDefaultDiskUserQuota['/var/lib/cluster'])
 
 // =====================================================
 // Calculate changes
