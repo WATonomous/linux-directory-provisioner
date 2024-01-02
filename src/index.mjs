@@ -5,9 +5,19 @@ import './patch.mjs';
 import path from "path";
 import { $, stdin, argv, question } from "zx";
 import { readFile } from "node:fs/promises";
-import { getExistingDirectory, parseConfig, diffProperties, deepEqual, getSSHKeys, getDiskQuota, unique } from "./utils.mjs";
+import {
+  getExistingDirectory,
+  parseConfig,
+  diffProperties,
+  deepEqual,
+  getSSHKeys,
+  getDiskQuota,
+  unique,
+  objectMap,
+  makeQuotaConfig,
+  QUOTA_BLOCK_SIZE,
+} from "./utils.mjs";
 import { validateConfig } from "./schema.mjs";
-
 
 function printUsageAndExit(exitCode = 0) {
   console.error("Usage: $0 [--help] [--dry-run] [--no-confirm] [--debug] --config=config.json");
@@ -57,7 +67,7 @@ const {
   configSSHKeys,
   configUpdatePassword,
   configLinger,
-  configDiskUserQuotaOverrides,
+  configUserDiskQuota,
   xfsDefaultDiskUserQuota,
 } = parseConfig(config);
 console.timeLog("parseConfig");
@@ -83,20 +93,14 @@ console.time("getSSHKeys");
 const sshKeys = await getSSHKeys(Object.values(users), config.user_ssh_key_base_dir);
 console.timeLog("getSSHKeys");
 
-console.log("Loading existing disk quota");
+const diskQuotaPaths = unique([...config.xfs_default_user_quota.map(q => q.path), ...Object.keys(configUserDiskQuota)]);
+console.log(`Loading disk quota for the following path(s): ${diskQuotaPaths.join(", ")}`);
 console.time("getDiskQuota");
-const diskQuota = await getDiskQuota(unique([...config.xfs_default_user_quota.map(q => q.path), ...Object.keys(configDiskUserQuotaOverrides)]));
+const diskQuota = await getDiskQuota(diskQuotaPaths);
 console.timeLog("getDiskQuota");
 
-// TODO: default user quota changes (per path)
-console.log("diskQuota", diskQuota);
-console.log(diskQuota['/var/lib/cluster'][0])
+// TODO: implement setting xfs default quota
 console.log(xfsDefaultDiskUserQuota['/var/lib/cluster'])
-
-// TODO: user quota changes (per path)
-// new: in config but not existing
-// delete: existing (within the managed uid range) but not in config
-// update: in config and existing, but different
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 // Calculate changes
@@ -191,6 +195,37 @@ const requirePasswordUpdate = Object.keys(configPasswords).filter(
 );
 const requireSSHKeyUpdate = Object.keys(configSSHKeys).filter((u) => newUsers.includes(u) || !deepEqual(sshKeys[u], configSSHKeys[u]));
 const requireLingerUpdate = Object.keys(configLinger).filter((u) => newUsers.includes(u) || lingerStates[u] !== configLinger[u]);
+const diskQuotaChanges = Object.fromEntries(
+  diskQuotaPaths.map((path) => {
+    const existing = diskQuota[path];
+    const quotaConfig = configUserDiskQuota[path];
+
+    const newQuotas = [];
+    const updateQuotas = [];
+    const deleteQuotas = [];
+
+    for (const [uid, quota] of Object.entries(quotaConfig)) {
+      if (uid in existing) {
+        if (!deepEqual(existing[uid], quota)) {
+          updateQuotas.push([uid, quota]);
+        }
+      } else {
+        newQuotas.push([uid, quota]);
+      }
+    }
+
+    for (const uid of Object.keys(existing)) {
+      if (config.managed_uid_range[0] > uid || uid > config.managed_uid_range[1]) {
+        continue;
+      }
+      if (!(uid in quotaConfig)) {
+        deleteQuotas.push([uid, makeQuotaConfig(0,0,0,0)]);
+      }
+    }
+
+    return [path, { newQuotas, updateQuotas, deleteQuotas }];
+  })
+)
 console.timeLog("calculateChanges");
 
 // Print changes
@@ -204,6 +239,12 @@ console.log("usermodArgs", usermodArgs);
 console.log("requiresSSHKeyUpdate", requireSSHKeyUpdate);
 console.log("requiresPasswordUpdate", requirePasswordUpdate);
 console.log("requireLingerUpdate", requireLingerUpdate);
+
+console.log("Disk quota changes",
+  objectMap(diskQuotaChanges, quotas =>
+    objectMap(quotas, q => q.map(([uid, quota]) => `${uid}: ${JSON.stringify(quota)}`))
+  )
+);
 
 if (argv["dry-run"]) {
   console.log("Dry run. exiting");
@@ -333,3 +374,14 @@ for (const username of requireLingerUpdate) {
   }
 }
 console.timeLog("linger")
+
+console.log(`Updating disk quotas for ${Object.keys(diskQuotaChanges).length} path(s)...`);
+console.time("diskquota")
+for (const [path, quotas] of Object.entries(diskQuotaChanges)) {
+  const p = $`setquota -b ${path}`.stdio("pipe");
+  for (const [uid, quota] of Object.values(quotas).flat()) {
+    p.stdin.write(`${uid} ${Math.floor(quota.bytes_soft_limit / QUOTA_BLOCK_SIZE)} ${Math.floor(quota.bytes_hard_limit / QUOTA_BLOCK_SIZE)} ${quota.inodes_soft_limit} ${quota.inodes_hard_limit}\n`);
+  }
+  p.stdin.end();
+}
+console.timeLog("diskquota")

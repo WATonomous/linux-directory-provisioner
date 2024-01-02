@@ -1,4 +1,7 @@
 import { readFile, readdir } from 'node:fs/promises';
+import { $ } from 'zx/core';
+
+export const QUOTA_BLOCK_SIZE = 1024; // bytes
 
 // Converts a human-readable size string to a number of bytes
 // E.g. "1Ki" -> 1024, "1Mi" -> 1048576, "1Gi" -> 1073741824
@@ -59,10 +62,10 @@ export function parseConfig(config) {
   const configSSHKeys = Object.fromEntries(config.users.map((u) => [u.username, u.ssh_authorized_keys]));
   const configLinger = Object.fromEntries(config.users.map((u) => [u.username, u.linger]));
   // Object of the form { <path>: { <uid>: { ...quotaConfig } } }
-  const configDiskUserQuotaOverrides = objectMap(
+  const configUserDiskQuota = objectMap(
     groupBy(
       config.users.flatMap((u) =>
-        u.disk_quota_overrides.map(normalizeDiskQuota).map((d) => {
+        u.disk_quota.map(normalizeDiskQuota).map((d) => {
           const { path, ...quotaConfig } = d;
           return [path, u.uid, quotaConfig];
         })
@@ -85,7 +88,7 @@ export function parseConfig(config) {
       update_password: _update_password,
       ssh_authorized_keys: _ssh_authorized_keys,
       linger: _linger,
-      disk_quota_overrides,
+      disk_quota,
       ...rest
     } = u;
     out[u.username] = {
@@ -102,7 +105,7 @@ export function parseConfig(config) {
     configSSHKeys,
     configUpdatePassword,
     configLinger,
-    configDiskUserQuotaOverrides,
+    configUserDiskQuota,
     xfsDefaultDiskUserQuota,
   };
 }
@@ -283,25 +286,42 @@ export async function getSSHKeys(users, baseDir) {
   return Object.fromEntries(sshKeyFiles);
 }
 
+export function makeQuotaConfig(bytes_soft_limit, bytes_hard_limit, inodes_soft_limit, inodes_hard_limit) {
+  return {
+    bytes_soft_limit,
+    bytes_hard_limit,
+    inodes_soft_limit,
+    inodes_hard_limit,
+  };
+}
+
 /**
  * Retrieves the disk quota information for a given path.
  * @param {string} path - The path for which to retrieve the disk quota.
  * @returns {Promise<Object>} - A promise that resolves to an object of the form { <uid>: { bytes_soft_limit, bytes_hard_limit, inodes_soft_limit, inodes_hard_limit } }
  */
-export async function getDiskQuotaForPath(path) {
+export async function getUserDiskQuotaForPath(path) {
+  // turn off verbosity temporarily
+  const zxIsVerbose = $.verbose;
+  $.verbose = false;
   // outputs <uid> <block soft> <block hard> <inode soft> <inode hard> where block is in 1KiB units
   const repquotaResult = await $`repquota ${path} --user --no-names --raw-grace | grep '^#' | awk '{print $1,$4,$5,$8,$9}' | cut -c2-`;
+  $.verbose = zxIsVerbose;
   const lines = repquotaResult.stdout
     .split("\n")
     .filter((l) => l)
     .map((l) => l.split(" "));
 
-  return Object.fromEntries(lines.map((l) => [Number(l[0]), {
-    bytes_soft_limit: Number(l[1]),
-    bytes_hard_limit: Number(l[2]),
-    inodes_soft_limit: Number(l[3]),
-    inodes_hard_limit: Number(l[4]),
-  }]));
+  return Object.fromEntries(lines
+    .map((l) => [Number(l[0]), makeQuotaConfig(
+      Number(l[1]) * QUOTA_BLOCK_SIZE,
+      Number(l[2]) * QUOTA_BLOCK_SIZE,
+      Number(l[3]),
+      Number(l[4]),
+    )])
+    // filter out empty quotas
+    .filter(([_uid, q]) => q.bytes_soft_limit || q.bytes_hard_limit || q.inodes_soft_limit || q.inodes_hard_limit)
+  );
 }
 
 /**
@@ -310,7 +330,7 @@ export async function getDiskQuotaForPath(path) {
  * @returns {Promise<Object>} - A promise that resolves to an object of the form { <path>: { <uid>: { bytes_soft_limit, bytes_hard_limit, inodes_soft_limit, inodes_hard_limit } } }
  */
 export async function getDiskQuota(paths) {
-  return Object.fromEntries(await Promise.all(paths.map(async (p) => [p, await getDiskQuotaForPath(p)])));
+  return Object.fromEntries(await Promise.all(paths.map(async (p) => [p, await getUserDiskQuotaForPath(p)])));
 }
 
 export function unique(arr) {
