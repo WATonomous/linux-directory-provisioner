@@ -1,4 +1,98 @@
 import { readFile, readdir } from 'node:fs/promises';
+import { $ } from 'zx';
+
+export const QUOTA_BLOCK_SIZE = 1024; // bytes
+
+/**
+ * Maps over the properties of an object and applies a function to each value.
+ * Returns a new object with the transformed values.
+ * Derived from: https://stackoverflow.com/a/14810722
+ *
+ * @param {Object} obj - The object to map over.
+ * @param {Function} fn - The function to apply to each value.
+ * @returns {Object} - The new object with transformed values.
+ *
+ * @example
+ * const obj = { a: 1, b: 2, c: 3 };
+ * const double = (value) => value * 2;
+ * const transformedObj = mapObjectValues(obj, double);
+ * // transformedObj: { a: 2, b: 4, c: 6 }
+ *
+ * @example
+ * const obj = { name: 'John', age: 30 };
+ * const capitalize = (value) => value.toUpperCase();
+ * const transformedObj = mapObjectValues(obj, capitalize);
+ * // transformedObj: { name: 'JOHN', age: '30' }
+ */
+export function objectMap(obj, fn) {
+  return Object.fromEntries(
+    Object.entries(obj).map(
+      ([k, v], i) => [k, fn(v, k, i)]
+    )
+  )
+}
+
+// Implementation of Object.groupBy according to https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/groupBy
+export function groupBy(arr, fn) {
+  return arr.reduce((out, x) => {
+    const key = fn(x);
+    if (!(key in out)) out[key] = [];
+    out[key].push(x);
+    return out;
+  }, {})
+}
+
+// Converts a human-readable size string to a number of bytes
+// E.g. "1Ki" -> 1024, "1Mi" -> 1048576, "1Gi" -> 1073741824
+export function parseIECSize(s) {
+  const match = s.match(/^([0-9]+)([kKmMgGtT])?i?$/);
+  if (!match) {
+    throw new Error(`Invalid size string: ${s}`);
+  }
+  const size = Number(match[1]);
+  const unit = match[2]?.toLowerCase();
+  if (!unit) {
+    return size;
+  }
+  const unitMap = {
+    k: 1024,
+    m: 1024**2,
+    g: 1024**3,
+    t: 1024**4,
+  };
+  return size * unitMap[unit];
+}
+
+// Converts a human-readable size string to a number
+// E.g. "1K" -> 1000, "1M" -> 1000000, "1G" -> 1000000000
+export function parseSISize(s) {
+  const match = s.match(/^([0-9]+)([kKmMgGtT])?$/);
+  if (!match) {
+    throw new Error(`Invalid size string: ${s}`);
+  }
+  const size = Number(match[1]);
+  const unit = match[2]?.toLowerCase();
+  if (!unit) {
+    return size;
+  }
+  const unitMap = {
+    k: 1000,
+    m: 1000**2,
+    g: 1000**3,
+    t: 1000**4,
+  };
+  return size * unitMap[unit];
+}
+
+export function normalizeDiskQuota(q) {
+  return {
+    path: q.path,
+    bytes_soft_limit: parseIECSize(q.bytes_soft_limit),
+    bytes_hard_limit: parseIECSize(q.bytes_hard_limit),
+    inodes_soft_limit: parseSISize(q.inodes_soft_limit),
+    inodes_hard_limit: parseSISize(q.inodes_hard_limit),
+  };
+}
 
 export function parseConfig(config) {
   const configGroups = Object.fromEntries(config.groups.map((g) => [g.groupname, g]));
@@ -6,6 +100,32 @@ export function parseConfig(config) {
   const configPasswords = Object.fromEntries(config.users.map((u) => [u.username, u.password]));
   const configSSHKeys = Object.fromEntries(config.users.map((u) => [u.username, u.ssh_authorized_keys]));
   const configLinger = Object.fromEntries(config.users.map((u) => [u.username, u.linger]));
+  // Object of the form { <path>: { <uid>: { ...quotaConfig } } }
+  const configUserDiskQuota = objectMap(
+    groupBy(
+      config.users.flatMap((u) =>
+        u.disk_quota.map(normalizeDiskQuota).map((d) => {
+          const { path, ...quotaConfig } = d;
+          return [path, u.uid, quotaConfig];
+        })
+      ),
+      // group by path
+      (x) => x[0]
+    ),
+    // convert to object of the form { <uid>: { ...quotaConfig } }
+    (v) => Object.fromEntries(v.map((x) => [x[1], x[2]]))
+  );
+  // XFS disk quota is implemented as a quota on the root user. The root user is not constrained by quotas.
+  for (const quota of config.xfs_default_user_quota) {
+    const { path, ...quotaConfig } = normalizeDiskQuota(quota);
+    if (!(path in configUserDiskQuota)) {
+      configUserDiskQuota[path] = {};
+    }
+    if ('0' in configUserDiskQuota[path]) {
+      throw new Error(`The root user (uid 0) already has a configured quota for path ${path}! This is the same as setting the xfs_default_user_quota property.`)
+    }
+    configUserDiskQuota[path]['0'] = quotaConfig;
+  }
 
   const configUsers = config.users.reduce((out, u) => {
     const {
@@ -14,6 +134,7 @@ export function parseConfig(config) {
       update_password: _update_password,
       ssh_authorized_keys: _ssh_authorized_keys,
       linger: _linger,
+      disk_quota: _disk_quota,
       ...rest
     } = u;
     out[u.username] = {
@@ -30,6 +151,7 @@ export function parseConfig(config) {
     configSSHKeys,
     configUpdatePassword,
     configLinger,
+    configUserDiskQuota,
   };
 }
 
@@ -168,4 +290,55 @@ export async function getSSHKeys(users, baseDir) {
   );
 
   return Object.fromEntries(sshKeyFiles);
+}
+
+export function makeQuotaConfig(bytes_soft_limit, bytes_hard_limit, inodes_soft_limit, inodes_hard_limit) {
+  return {
+    bytes_soft_limit,
+    bytes_hard_limit,
+    inodes_soft_limit,
+    inodes_hard_limit,
+  };
+}
+
+/**
+ * Retrieves the disk quota information for a given path.
+ * @param {string} path - The path for which to retrieve the disk quota.
+ * @returns {Promise<Object>} - A promise that resolves to an object of the form { <uid>: { bytes_soft_limit, bytes_hard_limit, inodes_soft_limit, inodes_hard_limit } }
+ */
+export async function getUserDiskQuotaForPath(path) {
+  // turn off verbosity temporarily
+  const zxIsVerbose = $.verbose;
+  $.verbose = false;
+  // outputs <uid> <block soft> <block hard> <inode soft> <inode hard> where block is in 1KiB units
+  const repquotaResult = await $`repquota ${path} --user --no-names --raw-grace | grep '^#' | awk '{print $1,$4,$5,$8,$9}' | cut -c2-`;
+  $.verbose = zxIsVerbose;
+  const lines = repquotaResult.stdout
+    .split("\n")
+    .filter((l) => l)
+    .map((l) => l.split(" "));
+
+  return Object.fromEntries(lines
+    .map((l) => [Number(l[0]), makeQuotaConfig(
+      Number(l[1]) * QUOTA_BLOCK_SIZE,
+      Number(l[2]) * QUOTA_BLOCK_SIZE,
+      Number(l[3]),
+      Number(l[4]),
+    )])
+    // filter out empty quotas
+    .filter(([_uid, q]) => q.bytes_soft_limit || q.bytes_hard_limit || q.inodes_soft_limit || q.inodes_hard_limit)
+  );
+}
+
+/**
+ * Retrieves the disk quota for multiple paths.
+ * @param {string[]} paths - An array of paths for which to retrieve the disk quota.
+ * @returns {Promise<Object>} - A promise that resolves to an object of the form { <path>: { <uid>: { bytes_soft_limit, bytes_hard_limit, inodes_soft_limit, inodes_hard_limit } } }
+ */
+export async function getDiskQuota(paths) {
+  return Object.fromEntries(await Promise.all(paths.map(async (p) => [p, await getUserDiskQuotaForPath(p)])));
+}
+
+export function unique(arr) {
+  return [...new Set(arr)];
 }

@@ -5,9 +5,19 @@ import './patch.mjs';
 import path from "path";
 import { $, stdin, argv, question } from "zx";
 import { readFile } from "node:fs/promises";
-import { getExistingDirectory, parseConfig, diffProperties, deepEqual, getSSHKeys } from "./utils.mjs";
+import {
+  getExistingDirectory,
+  parseConfig,
+  diffProperties,
+  deepEqual,
+  getSSHKeys,
+  getDiskQuota,
+  unique,
+  objectMap,
+  makeQuotaConfig,
+  QUOTA_BLOCK_SIZE,
+} from "./utils.mjs";
 import { validateConfig } from "./schema.mjs";
-
 
 function printUsageAndExit(exitCode = 0) {
   console.error("Usage: $0 [--help] [--dry-run] [--no-confirm] [--debug] --config=config.json");
@@ -24,6 +34,10 @@ if (!argv.config) {
   console.error("Missing required argument --config");
   printUsageAndExit(1);
 }
+
+// =====================================================
+// Load, validate, and parse config
+// =====================================================
 
 console.time("readConfig");
 let config;
@@ -44,6 +58,23 @@ if (!validateConfig(config)) {
 }
 console.timeLog("validateConfig");
 
+console.log("Parsing config");
+console.time("parseConfig");
+const {
+  configGroups,
+  configUsers,
+  configPasswords,
+  configSSHKeys,
+  configUpdatePassword,
+  configLinger,
+  configUserDiskQuota,
+} = parseConfig(config);
+console.timeLog("parseConfig");
+
+// =====================================================
+// Load existing directory
+// =====================================================
+
 console.log("Loading existing directory...");
 console.time("getExistingDirectory");
 const { users, passwords, groups, lingerStates } = await getExistingDirectory();
@@ -61,10 +92,15 @@ console.time("getSSHKeys");
 const sshKeys = await getSSHKeys(Object.values(users), config.user_ssh_key_base_dir);
 console.timeLog("getSSHKeys");
 
-console.log("Parsing config");
-console.time("parseConfig");
-const { configGroups, configUsers, configPasswords, configSSHKeys, configUpdatePassword, configLinger } = parseConfig(config);
-console.timeLog("parseConfig");
+const diskQuotaPaths = unique([...config.xfs_default_user_quota.map(q => q.path), ...Object.keys(configUserDiskQuota)]);
+console.log(`Loading disk quota for the following path(s): ${diskQuotaPaths.join(", ")}`);
+console.time("getDiskQuota");
+const diskQuota = await getDiskQuota(diskQuotaPaths);
+console.timeLog("getDiskQuota");
+
+// =====================================================
+// Calculate changes
+// =====================================================
 
 console.log("Calculating changes");
 console.time("calculateChanges");
@@ -155,6 +191,37 @@ const requirePasswordUpdate = Object.keys(configPasswords).filter(
 );
 const requireSSHKeyUpdate = Object.keys(configSSHKeys).filter((u) => newUsers.includes(u) || !deepEqual(sshKeys[u], configSSHKeys[u]));
 const requireLingerUpdate = Object.keys(configLinger).filter((u) => newUsers.includes(u) || lingerStates[u] !== configLinger[u]);
+const diskQuotaChanges = Object.fromEntries(
+  diskQuotaPaths.map((p) => {
+    const existing = diskQuota[p];
+    const quotaConfig = configUserDiskQuota[p];
+
+    const newQuotas = [];
+    const updateQuotas = [];
+    const deleteQuotas = [];
+
+    for (const [uid, quota] of Object.entries(quotaConfig)) {
+      if (uid in existing) {
+        if (!deepEqual(existing[uid], quota)) {
+          updateQuotas.push([uid, quota]);
+        }
+      } else {
+        newQuotas.push([uid, quota]);
+      }
+    }
+
+    for (const uid of Object.keys(existing)) {
+      if (config.managed_uid_range[0] > uid || uid > config.managed_uid_range[1]) {
+        continue;
+      }
+      if (!(uid in quotaConfig)) {
+        deleteQuotas.push([uid, makeQuotaConfig(0,0,0,0)]);
+      }
+    }
+
+    return [p, { newQuotas, updateQuotas, deleteQuotas }];
+  })
+)
 console.timeLog("calculateChanges");
 
 // Print changes
@@ -168,6 +235,12 @@ console.log("usermodArgs", usermodArgs);
 console.log("requiresSSHKeyUpdate", requireSSHKeyUpdate);
 console.log("requiresPasswordUpdate", requirePasswordUpdate);
 console.log("requireLingerUpdate", requireLingerUpdate);
+
+console.log("Disk quota changes",
+  objectMap(diskQuotaChanges, quotas =>
+    objectMap(quotas, q => q.map(([uid, quota]) => `${uid}: ${JSON.stringify(quota)}`))
+  )
+);
 
 if (argv["dry-run"]) {
   console.log("Dry run. exiting");
@@ -297,3 +370,14 @@ for (const username of requireLingerUpdate) {
   }
 }
 console.timeLog("linger")
+
+console.log(`Updating disk quotas for ${Object.keys(diskQuotaChanges).length} path(s)...`);
+console.time("diskquota")
+for (const [p, quotas] of Object.entries(diskQuotaChanges)) {
+  const pipe = $`setquota -b ${p}`.stdio("pipe");
+  for (const [uid, quota] of Object.values(quotas).flat()) {
+    pipe.stdin.write(`${uid} ${Math.floor(quota.bytes_soft_limit / QUOTA_BLOCK_SIZE)} ${Math.floor(quota.bytes_hard_limit / QUOTA_BLOCK_SIZE)} ${quota.inodes_soft_limit} ${quota.inodes_hard_limit}\n`);
+  }
+  pipe.stdin.end();
+}
+console.timeLog("diskquota")

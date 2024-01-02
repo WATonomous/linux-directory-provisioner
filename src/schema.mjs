@@ -1,5 +1,44 @@
 import Ajv from 'ajv';
 
+const quotaSpec = {
+  type: "object",
+  properties: {
+    path: {
+      description: "Path to apply quota to. Must be a valid mountpoint.",
+      type: "string",
+    },
+    bytes_soft_limit: {
+      description:
+        "Soft limit in bytes. Set to `0` to disable this limit. Supports the following suffixes for readability: `Ki` (multiples of 2^10), `Mi` (multiples of 2^20), `Gi` (multiples of 2^30).",
+      type: "string",
+      pattern: "^[0-9]+(Ki|Mi|Gi)?$",
+      default: "0",
+    },
+    bytes_hard_limit: {
+      description:
+        "Hard limit in bytes. Set to `0` to disable this limit. Supports the following suffixes for readability: `Ki` (multiples of 2^10), `Mi` (multiples of 2^20), `Gi` (multiples of 2^30).",
+      type: "string",
+      pattern: "^[0-9]+(Ki|Mi|Gi)?$",
+      default: "0",
+    },
+    inodes_soft_limit: {
+      type: "string",
+      description:
+        "Soft limit in inodes. Set to `0` to disable this limit. Supports the following suffixes for readability: `k` (multiples of 10^3), `m` (multiples of 10^6), `g` (multiples of 10^9), `t` (multiples of 10^12).",
+      pattern: "^[0-9]+(k|m|g|t)?$",
+      default: "0",
+    },
+    inodes_hard_limit: {
+      type: "string",
+      description:
+        "Hard limit in inodes. Set to `0` to disable this limit. Supports the following suffixes for readability: `k` (multiples of 10^3), `m` (multiples of 10^6), `g` (multiples of 10^9), `t` (multiples of 10^12).",
+      pattern: "^[0-9]+(k|m|g|t)?$",
+      default: "0",
+    },
+  },
+  additionalProperties: false,
+};
+
 const userSchema = {
   type: "object",
   properties: {
@@ -17,6 +56,11 @@ const userSchema = {
     shell: { type: "string", default: "/bin/bash" },
     ssh_authorized_keys: { type: "array", items: { type: "string" }, default: [] },
     linger: { type: "boolean", default: false },
+    disk_quota: {
+      type: "array",
+      items: quotaSpec,
+      default: [],
+    },
   },
   required: ["username", "password", "update_password", "uid", "primary_group"],
   additionalProperties: false,
@@ -58,8 +102,14 @@ export const configSchema = {
       description: "Base directory for user SSH keys. Supports templating with %u (username) and %U (uid)",
       default: "/home/%u/.ssh",
     },
+    // XFS default quota can be set using `sudo xfs_quota <path> -x -c "limit -d bsoft=<bsoft> bhard=<bhard> isoft=<isoft> ihard=<ihard>"`
+    xfs_default_user_quota: {
+      type: "array",
+      items: quotaSpec,
+      default: [],
+    },
   },
-  required: ["users", "groups"],
+  required: ["users", "groups", "managed_uid_range", "managed_gid_range"],
   additionalProperties: false,
 };
 
