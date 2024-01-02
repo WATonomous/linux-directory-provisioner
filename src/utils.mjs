@@ -122,7 +122,7 @@ export function parseConfig(config) {
       configUserDiskQuota[path] = {};
     }
     if ('0' in configUserDiskQuota[path]) {
-      throw new ValueError(`The root user (uid 0) already has a configured quota for path ${path}! This is the same as setting the xfs_default_user_quota property.`)
+      throw new Error(`The root user (uid 0) already has a configured quota for path ${path}! This is the same as setting the xfs_default_user_quota property.`)
     }
     configUserDiskQuota[path]['0'] = quotaConfig;
   }
