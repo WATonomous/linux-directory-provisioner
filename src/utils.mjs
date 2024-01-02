@@ -1,7 +1,46 @@
 import { readFile, readdir } from 'node:fs/promises';
-import { $ } from 'zx/core';
+import { $ } from 'zx';
 
 export const QUOTA_BLOCK_SIZE = 1024; // bytes
+
+/**
+ * Maps over the properties of an object and applies a function to each value.
+ * Returns a new object with the transformed values.
+ * Derived from: https://stackoverflow.com/a/14810722
+ *
+ * @param {Object} obj - The object to map over.
+ * @param {Function} fn - The function to apply to each value.
+ * @returns {Object} - The new object with transformed values.
+ *
+ * @example
+ * const obj = { a: 1, b: 2, c: 3 };
+ * const double = (value) => value * 2;
+ * const transformedObj = mapObjectValues(obj, double);
+ * // transformedObj: { a: 2, b: 4, c: 6 }
+ *
+ * @example
+ * const obj = { name: 'John', age: 30 };
+ * const capitalize = (value) => value.toUpperCase();
+ * const transformedObj = mapObjectValues(obj, capitalize);
+ * // transformedObj: { name: 'JOHN', age: '30' }
+ */
+export function objectMap(obj, fn) {
+  return Object.fromEntries(
+    Object.entries(obj).map(
+      ([k, v], i) => [k, fn(v, k, i)]
+    )
+  )
+}
+
+// Implementation of Object.groupBy according to https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/groupBy
+export function groupBy(arr, fn) {
+  return arr.reduce((out, x) => {
+    const key = fn(x);
+    if (!(key in out)) out[key] = [];
+    out[key].push(x);
+    return out;
+  }, {})
+}
 
 // Converts a human-readable size string to a number of bytes
 // E.g. "1Ki" -> 1024, "1Mi" -> 1048576, "1Gi" -> 1073741824
@@ -17,9 +56,9 @@ export function parseIECSize(s) {
   }
   const unitMap = {
     k: 1024,
-    m: Math.pow(1024, 2),
-    g: Math.pow(1024, 3),
-    t: Math.pow(1024, 4),
+    m: 1024**2,
+    g: 1024**3,
+    t: 1024**4,
   };
   return size * unitMap[unit];
 }
@@ -38,9 +77,9 @@ export function parseSISize(s) {
   }
   const unitMap = {
     k: 1000,
-    m: Math.pow(1000, 2),
-    g: Math.pow(1000, 3),
-    t: Math.pow(1000, 4),
+    m: 1000**2,
+    g: 1000**3,
+    t: 1000**4,
   };
   return size * unitMap[unit];
 }
@@ -88,7 +127,7 @@ export function parseConfig(config) {
       update_password: _update_password,
       ssh_authorized_keys: _ssh_authorized_keys,
       linger: _linger,
-      disk_quota,
+      disk_quota: _disk_quota,
       ...rest
     } = u;
     out[u.username] = {
@@ -232,45 +271,6 @@ export function diffProperties(obj1, obj2) {
   }
 
   return out;
-}
-
-/**
- * Maps over the properties of an object and applies a function to each value.
- * Returns a new object with the transformed values.
- * Derived from: https://stackoverflow.com/a/14810722
- *
- * @param {Object} obj - The object to map over.
- * @param {Function} fn - The function to apply to each value.
- * @returns {Object} - The new object with transformed values.
- *
- * @example
- * const obj = { a: 1, b: 2, c: 3 };
- * const double = (value) => value * 2;
- * const transformedObj = mapObjectValues(obj, double);
- * // transformedObj: { a: 2, b: 4, c: 6 }
- *
- * @example
- * const obj = { name: 'John', age: 30 };
- * const capitalize = (value) => value.toUpperCase();
- * const transformedObj = mapObjectValues(obj, capitalize);
- * // transformedObj: { name: 'JOHN', age: '30' }
- */
-export function objectMap(obj, fn) {
-  return Object.fromEntries(
-    Object.entries(obj).map(
-      ([k, v], i) => [k, fn(v, k, i)]
-    )
-  )
-}
-
-// Implementation of Object.groupBy according to https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/groupBy
-export function groupBy(arr, fn) {
-  return arr.reduce((out, x) => {
-    const key = fn(x);
-    if (!(key in out)) out[key] = [];
-    out[key].push(x);
-    return out;
-  }, {})
 }
 
 export async function getSSHKeys(users, baseDir) {

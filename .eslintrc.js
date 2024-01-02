@@ -35,6 +35,7 @@ module.exports = {
     "no-param-reassign": "off",
     "consistent-return": "off",
     "no-await-in-loop": "off",
+    "no-continue": "off",
   },
   globals: {
     // zx globals
