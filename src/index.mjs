@@ -333,31 +333,29 @@ console.timeLog("chpasswd")
 
 console.log(`Updating SSH keys for ${requireSSHKeyUpdate.length} users...`);
 console.time("sshkeys")
+// sshKeyCommonDir is the part of the path that is the same for all users
+const sshKeyCommonDir = config.user_ssh_key_base_dir.substring(0, config.user_ssh_key_base_dir.indexOf("%"));
 await Promise.all(
   requireSSHKeyUpdate.map(async (username) => {
     const expandedBaseDir = config.user_ssh_key_base_dir.replaceAll("%u", username).replaceAll("%U", configUsers[username].uid);
-    // commonDir is the part of the path that is the same for all users
-    const commonDir = config.user_ssh_key_base_dir.substring(0, config.user_ssh_key_base_dir.indexOf("%"));
-    // relativeDirs is paths leading up to the SSH keys from commonDir
-    const relativeDirs = path.relative(commonDir, expandedBaseDir).split(path.sep);
+    // userDir is the first directory in the path that is different for each user
+    const userDir = path.relative(sshKeyCommonDir, expandedBaseDir).split(path.sep)[0];
 
     const authorizedKeysPath = `${expandedBaseDir}/authorized_keys`;
     await $`mkdir -p ${expandedBaseDir}`;
     await $`touch ${authorizedKeysPath}`;
 
-    // Set the proper permissions on the user-specific directory
-    // and the directory containing the SSH keys
-    await $`chmod 700 ${path.join(commonDir, relativeDirs[0])}`;
-    await $`chmod 700 ${expandedBaseDir}`;
-
-    // Set the ownership of all directories leading up to the SSH keys
-    const chownPaths = relativeDirs.map((_, i) => path.join(commonDir, ...relativeDirs.slice(0, i + 1)));
-    await $`chown ${username}:${configUsers[username].primary_group} ${chownPaths} ${authorizedKeysPath}`;
+    // Set the group ownership of everything in the user directory to the user's primary group
+    await $`chown -R :${configUsers[username].primary_group} ${path.join(sshKeyCommonDir, userDir)}`;
 
     // Write the SSH keys
     await $`echo ${configSSHKeys[username].join("\n")} > ${authorizedKeysPath}`;
   })
 );
+// Set the proper permissions on the directory
+await $`chown -R $(id -u) ${sshKeyCommonDir}`; // Set the owner to the provisioning user (usually root), leave the group as-is
+await $`chmod 755 ${sshKeyCommonDir}`;
+await $`chmod -R 750 ${sshKeyCommonDir}/*`;
 console.timeLog("sshkeys")
 
 console.log(`Updating linger state for ${requireLingerUpdate.length} users...`);
