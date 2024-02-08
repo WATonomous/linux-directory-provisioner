@@ -346,16 +346,20 @@ await Promise.all(
     await $`touch ${authorizedKeysPath}`;
 
     // Set the group ownership of everything in the user directory to the user's primary group
-    await $`chown -R :${configUsers[username].primary_group} ${path.join(sshKeyCommonDir, userDir)}`;
+    if (config.use_strict_ssh_key_dir_permissions) {
+      await $`chown -R :${configUsers[username].primary_group} ${path.join(sshKeyCommonDir, userDir)}`;
+    }
 
     // Write the SSH keys
     await $`echo ${configSSHKeys[username].join("\n")} > ${authorizedKeysPath}`;
   })
 );
-// Set the proper permissions on the directory
-await $`chown -R $(id -u) ${sshKeyCommonDir}`; // Set the owner to the provisioning user (usually root), leave the group as-is
-await $`chmod 755 ${sshKeyCommonDir}`; // all users can read and execute the directory
-await $`chmod -R 750 ${sshKeyCommonDir}/*`; // only the group can read and execute
+if (config.use_strict_ssh_key_dir_permissions) {
+  // Set the proper permissions on the directory
+  await $`chown -R $(id -u) ${sshKeyCommonDir}`; // Set the owner to the provisioning user (usually root), leave the group as-is
+  await $`chmod 755 ${sshKeyCommonDir}`; // all users can read and execute the directory
+  await $`chmod -R 750 ${sshKeyCommonDir}/*`; // only the group can read and execute
+}
 console.timeLog("sshkeys")
 
 console.log(`Updating linger state for ${requireLingerUpdate.length} users...`);
