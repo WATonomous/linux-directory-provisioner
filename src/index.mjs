@@ -267,6 +267,11 @@ for (const u of usersToDelete) {
 await Promise.all(
   usersToDelete.map(async (u) => {
     await $`rm -rf ${config.user_ssh_key_base_dir}/${u}`;
+    return Promise.all(
+      config.directories.map(async (d) => {
+        await $`rm -rf ${d}/${u}`;
+      })
+    )
   })
 );
 console.timeLog("userdel")

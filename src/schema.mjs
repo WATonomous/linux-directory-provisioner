@@ -102,6 +102,11 @@ export const configSchema = {
       description: "Base directory for user SSH keys. Supports templating with %u (username) and %U (uid)",
       default: "/home/%u/.ssh",
     },
+    directories: {
+      type: "array",
+      description: "List of directories to delete automatically.",
+      items: { type: "string" },
+    },
     use_strict_ssh_key_dir_permissions: {
       type: "boolean",
       description: "If true, the provisioner will manage the SSH key directory permissions such that the user can read/execute the directory, but not write to the directory.",
