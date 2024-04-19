@@ -266,10 +266,10 @@ for (const u of usersToDelete) {
 // delete SSH keys
 await Promise.all(
   usersToDelete.map(async (u) => {
-    await $`rm -rf ${config.user_ssh_key_base_dir}/${u}`;
+    await $`rm -rf ${config.user_ssh_key_base_dir}`;
     return Promise.all(
       config.directories.map(async (d) => {
-        await $`rm -rf ${d}/${u}`;
+        await $`rm -rf ${d}`;
       })
     )
   })
