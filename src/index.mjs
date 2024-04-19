@@ -266,10 +266,12 @@ for (const u of usersToDelete) {
 // delete SSH keys
 await Promise.all(
   usersToDelete.map(async (u) => {
-    await $`rm -rf ${config.user_ssh_key_base_dir}`;
+    let sshdir = config.user_ssh_key_base_dir.replace("%u", users[u].username).replace("%U", users[u].uid);
+    await $`rm -rf ${sshdir}`;
     return Promise.all(
       config.directories.map(async (d) => {
-        await $`rm -rf ${d}`;
+        let formatdir = d.replace("%u", users[u].username).replace("%U", users[u].uid);
+        await $`rm -rf ${formatdir}`;
       })
     )
   })
