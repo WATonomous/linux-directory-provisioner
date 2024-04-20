@@ -269,7 +269,7 @@ await Promise.all(
     const sshdir = config.user_ssh_key_base_dir.replace("%u", users[u].username).replace("%U", users[u].uid);
     await $`rm -rf ${sshdir}`;
     return Promise.all(
-      config.directories.map(async (d) => {
+      config.managed_user_directories.map(async (d) => {
         const formatdir = d.replace("%u", users[u].username).replace("%U", users[u].uid);
         await $`rm -rf ${formatdir}`;
       })
