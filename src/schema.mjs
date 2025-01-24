@@ -104,7 +104,7 @@ export const configSchema = {
     },
     managed_user_directories: {
       type: "array",
-      description: "List of directories to delete automatically. Supports templating with $u (username) and %U (uid)",
+      description: "List of directories to delete automatically. Supports templating with %u (username) and %U (uid)",
       items: { type: "string" },
     },
     use_strict_ssh_key_dir_permissions: {

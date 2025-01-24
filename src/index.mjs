@@ -268,6 +268,11 @@ await Promise.all(
   usersToDelete.map(async (u) => {
     const sshdir = config.user_ssh_key_base_dir.replace("%u", users[u].username).replace("%U", users[u].uid);
     await $`rm -rf ${sshdir}`;
+  })
+);
+// delete managed dirs
+await Promise.all(
+  usersToDelete.map(async (u) => {
     return Promise.all(
       config.managed_user_directories.map(async (d) => {
         const formatdir = d.replace("%u", users[u].username).replace("%U", users[u].uid);
@@ -275,7 +280,8 @@ await Promise.all(
       })
     )
   })
-);
+)
+
 console.timeLog("userdel")
 
 console.log(`Deleting ${groupsToDelete.length} groups...`);
