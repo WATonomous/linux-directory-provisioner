@@ -272,14 +272,13 @@ await Promise.all(
 );
 // delete managed dirs
 await Promise.all(
-  usersToDelete.map(async (u) => {
-    return Promise.all(
+  usersToDelete.map(async (u) => Promise.all(
       config.managed_user_directories.map(async (d) => {
         const formatdir = d.replace("%u", users[u].username).replace("%U", users[u].uid);
         await $`rm -rf ${formatdir}`;
       })
     )
-  })
+  )
 )
 
 console.timeLog("userdel")
