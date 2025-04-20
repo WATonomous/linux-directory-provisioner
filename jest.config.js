@@ -12,15 +12,19 @@ const depsToTransform = [
   "webpod",
 ]
 
+/** @type {import('ts-jest').JestConfigWithTsJest} **/
 module.exports = {
   testRegex: "(/__tests__/.*|(\\.|/)(test|spec))\\.(m?jsx?|tsx?)$",
   transform: {
-    "^.+\\.jsx?$": "babel-jest",
-    "^.+\\.mjs$": "babel-jest",
+    "^.+\.jsx?$": "babel-jest",
+    "^.+\.mjs$": "babel-jest",
+    // Disable esModuleInterop warning:
+    // https://github.com/fuzzc0re/electron-svelte-typescript/issues/9#issuecomment-2041212043
+    "^.+\.tsx?$": ["ts-jest", { diagnostics: { ignoreCodes: ['TS151001'] } }],
   },
   testPathIgnorePatterns: ["<rootDir>/build/", "<rootDir>/node_modules/"],
   transformIgnorePatterns: [
       `<rootDir>/node_modules/(?!(${depsToTransform.join("|")}))`
   ],
-  moduleFileExtensions: ["js", "jsx", "mjs"],
+  moduleFileExtensions: ["js", "jsx", "mjs", "ts", "tsx"],
 };
