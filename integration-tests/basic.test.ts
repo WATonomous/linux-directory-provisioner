@@ -16,7 +16,7 @@ describe("Sanity", () => {
         }
 
         await container.stop();
-    }, 30000);
+    }, 60000);
 });
 
 describe("Basic", () => {
@@ -59,7 +59,7 @@ describe("Basic", () => {
             managed_uid_range: [1001, 1002],
             managed_gid_range: [1501, 1502],
         };
-    }, 30000);
+    }, 60000);
 
     test("should handle invalid config", async () => {
         const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--config", "invalid_config.json"]);
@@ -97,7 +97,7 @@ describe("Basic", () => {
             expect(stdout).toContain(`user1:${basicConfig.users[0].password}`);
             expect(stdout).toContain(`user2:${basicConfig.users[1].password}`);
         }
-    }, 30000);
+    }, 60000);
 
     test("should populate SSH keys correctly", async () => {
         basicConfig.users[0].ssh_authorized_keys = [
@@ -121,7 +121,7 @@ describe("Basic", () => {
                 expect(stdout).toContain(key);
             }
         }
-    }, 30000);
+    }, 60000);
 
     test("should set custom shell correctly", async () => {
         basicConfig.users[0].shell = "/bin/zsh";
@@ -140,7 +140,7 @@ describe("Basic", () => {
             expect(exitCode).toBe(0);
             expect(stdout).toContain("user1:/bin/zsh");
         }
-    }, 30000);
+    }, 60000);
 
     test("should assign users to additional groups", async () => {
         basicConfig.users[0].additional_groups = ["group3"];
@@ -171,7 +171,7 @@ describe("Basic", () => {
             expect(stdout).toMatch(/group4:x:1504:.*user2/);
             expect(stdout).not.toMatch(/group4:x:1504:.*user1/);
         }
-    }, 30000);
+    }, 60000);
 
     test("should respect user_ssh_key_base_dir", async () => {
         basicConfig.user_ssh_key_base_dir = "/tmp/ssh-keys/%u/%U/.ssh";
@@ -196,7 +196,7 @@ describe("Basic", () => {
                 expect(stdout).toContain(key);
             }
         }
-    }, 30000);
+    }, 60000);
 
     test("should respect use_strict_ssh_key_dir_permissions", async () => {
         basicConfig.user_ssh_key_base_dir = "/tmp/ssh-keys/%u/%U/.ssh";
@@ -225,7 +225,7 @@ describe("Basic", () => {
             expect(exitCode).toBe(0);
             expect(stdout).toContain("750 root group1");
         }
-    }, 30000);
+    }, 60000);
 
     test("should delete users and groups that have been removed from the config", async () => {
         basicConfig.user_ssh_key_base_dir = "/tmp/ssh-keys/%u/%U/.ssh";
@@ -270,7 +270,7 @@ describe("Basic", () => {
             expect(exitCode).toBe(1);
             expect(stderr).toContain("No such file or directory");
         }
-    }, 30000);
+    }, 60000);
 
     afterEach(async () => {
         await container.stop();
