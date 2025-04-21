@@ -10,7 +10,7 @@
     "start": "zx src/index.mjs",
     "lint": "eslint src/**/*.mjs",
     "transpile": "esbuild src/index.mjs --format=esm --bundle --platform=node --target=node20 --outfile=dist/index.mjs",
-    "prepare": "npm run transpile",
+    "prepack": "npm run transpile",
     "test": "jest"
   },
   "author": "",

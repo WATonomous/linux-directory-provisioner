@@ -4,10 +4,10 @@ FROM $BASE_IMAGE AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
+RUN npm ci
+
 COPY babel.config.js ./
 COPY src ./src
-
-RUN npm ci
 RUN npm pack
 RUN mv *.tgz dist.tgz
 
