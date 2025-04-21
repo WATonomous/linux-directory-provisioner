@@ -268,7 +268,7 @@ for (const u of usersToDelete) {
 await Promise.all(
   usersToDelete.map(async (u) => {
     const username = u;
-    const uid = users[username].uid;
+    const {uid} = users[username];
     const expandedBaseDir = config.user_ssh_key_base_dir.replaceAll("%u", username).replaceAll("%U", uid);
     await $`rm -rf ${expandedBaseDir}`;
   })
