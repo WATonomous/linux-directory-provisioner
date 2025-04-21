@@ -61,11 +61,19 @@ describe("Basic", () => {
         };
     }, 60000);
 
-    test("should handle invalid config", async () => {
-        const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--config", "invalid_config.json"]);
+    test("should handle missing config", async () => {
+        const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--config", "nonexistent.json"]);
         expect(exitCode).toBe(1);
         expect(stderr).toContain("Error: ENOENT");
-    });
+    }, 60000);
+
+    test("should handle invalid config", async () => {
+        await container.copyContentToContainer([{ content: JSON.stringify({ invalid_property: "test" }), target: "/app/config.json" }]);
+        const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--config", "/app/config.json"]);
+        expect(exitCode).toBe(1);
+        expect(stderr).toContain("must NOT have additional properties");
+        expect(stderr).toContain("{ additionalProperty: 'invalid_property' }");
+    }, 60000);
 
     test("should create users according to config", async () => {
         await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
