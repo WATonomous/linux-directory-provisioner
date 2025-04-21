@@ -1,4 +1,4 @@
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile, readdir, access } from 'node:fs/promises';
 import { $ } from 'zx';
 
 export const QUOTA_BLOCK_SIZE = 1024; // bytes
@@ -155,13 +155,25 @@ export function parseConfig(config) {
   };
 }
 
+export async function isLingerSupported() {
+  try {
+    await access("/var/lib/systemd/linger");
+    return true;
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return false; // Directory does not exist
+    }
+    throw error; // Rethrow unexpected errors
+  }
+}
+
 export async function getExistingDirectory() {
   // Load current configuration from system
   const [userLines, shadowLines, groupLines, lingerUsernames] = await Promise.all([
     readFile("/etc/passwd", { encoding: "utf8" }).then((s) => s.split("\n").filter((l) => l)),
     readFile("/etc/shadow", { encoding: "utf8" }).then((s) => s.split("\n").filter((l) => l)),
     readFile("/etc/group", { encoding: "utf8" }).then((s) => s.split("\n").filter((l) => l)),
-    readdir("/var/lib/systemd/linger/"),
+    isLingerSupported().then(supported => supported ? readdir("/var/lib/systemd/linger/") : []),
   ]);
 
   const groups = groupLines
