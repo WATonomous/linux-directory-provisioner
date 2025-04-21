@@ -156,7 +156,15 @@ export function parseConfig(config) {
 }
 
 export async function isLingerSupported() {
-  return access("/var/lib/systemd/linger").then(() => true).catch(() => false);
+  try {
+    await access("/var/lib/systemd/linger");
+    return true;
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return false; // Directory does not exist
+    }
+    throw error; // Rethrow unexpected errors
+  }
 }
 
 export async function getExistingDirectory() {
