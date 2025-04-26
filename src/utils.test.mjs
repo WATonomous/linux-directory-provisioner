@@ -133,6 +133,7 @@ describe("getExistingDirectory", () => {
   // Test case: Valid directory data
   test("should return the correct directory data", async () => {
     // Mock the readFile function
+    const originalReadFile = fsPromises.readFile;
     jest.spyOn(fsPromises, "readFile").mockImplementation((path) => {
       if (path === "/etc/passwd") {
         return Promise.resolve("user1:x:1001:1001:User 1:/home/user1:/bin/bash\nuser2:x:1002:1002:User 2:/home/user2:/bin/bash");
@@ -143,12 +144,29 @@ describe("getExistingDirectory", () => {
       if (path === "/etc/group") {
         return Promise.resolve("group1:x:1001:user1\ngroup2:x:1002:user2\ngroup3:x:1003:user1,user2");
       }
+
+      return originalReadFile(path);
     });
 
+    const originalReaddir = fsPromises.readdir;
     jest.spyOn(fsPromises, "readdir").mockImplementation((path) => {
       if (path === "/var/lib/systemd/linger/") {
         return Promise.resolve(["user1"]);
       }
+
+      return originalReaddir(path);
+    });
+
+    const originalAccess = fsPromises.access;
+    jest.spyOn(fsPromises, "access").mockImplementation((path) => {
+      if (path === "/test/user1/1001/.test") {
+        return Promise.resolve();
+      }
+      if (path === "/var/lib/systemd/linger") {
+        return Promise.resolve();
+      }
+
+      return originalAccess(path);
     });
 
     const expectedData = {
@@ -192,10 +210,14 @@ describe("getExistingDirectory", () => {
       lingerStates: {
         user1: true,
         user2: false,
+      },
+      managedDirectoriesPerUser: {
+        user1: ["/test/user1/1001/.test"],
+        user2: [],
       }
     };
 
-    const result = await getExistingDirectory({ managed_user_directories: [] });
+    const result = await getExistingDirectory({ managed_user_directories: ["/test/%u/%U/.test"] });
     expect(result).toEqual(expectedData);
   });
 
