@@ -100,7 +100,7 @@ export function parseConfig(config) {
   const configUpdatePassword = Object.fromEntries(config.users.map((u) => [u.username, u.update_password]));
   const configPasswords = Object.fromEntries(config.users.map((u) => [u.username, u.password]));
   const configSSHAuthorizedKeys = Object.fromEntries(config.users.map((u) => [u.username, u.ssh_authorized_keys]));
-  const configSSHAuthorizedKeysPath = Object.fromEntries(config.users.map((u) => [u.username, (u.ssh_authorized_keys_path ?? path.join(u.home_dir, ".ssh", "authorized_keys")).replace(/%u/g, u.username).replace(/%U/g, u.uid)]));
+  const configSSHAuthorizedKeysPath = Object.fromEntries(config.users.map((u) => [u.username, u.ssh_authorized_keys_path ?? path.join(u.home_dir, ".ssh", "authorized_keys").replace(/%u/g, u.username).replace(/%U/g, u.uid)]));
   const configLinger = Object.fromEntries(config.users.map((u) => [u.username, u.linger]));
   const configManagedDirectoriesPerUser = Object.fromEntries(config.users.map((u) => [u.username, config.managed_user_directories.map(d => d.replace(/%u/g, u.username).replace(/%U/g, u.uid))]));
   // Object of the form { <path>: { <uid>: { ...quotaConfig } } }
@@ -108,8 +108,8 @@ export function parseConfig(config) {
     groupBy(
       config.users.flatMap((u) =>
         u.disk_quota.map(normalizeDiskQuota).map((d) => {
-          const { path, ...quotaConfig } = d;
-          return [path, u.uid, quotaConfig];
+          const { path: quotaPath, ...quotaConfig } = d;
+          return [quotaPath, u.uid, quotaConfig];
         })
       ),
       // group by path
@@ -120,14 +120,14 @@ export function parseConfig(config) {
   );
   // XFS disk quota is implemented as a quota on the root user. The root user is not constrained by quotas.
   for (const quota of config.xfs_default_user_quota) {
-    const { path, ...quotaConfig } = normalizeDiskQuota(quota);
-    if (!(path in configUserDiskQuota)) {
-      configUserDiskQuota[path] = {};
+    const { path: quotaPath, ...quotaConfig } = normalizeDiskQuota(quota);
+    if (!(quotaPath in configUserDiskQuota)) {
+      configUserDiskQuota[quotaPath] = {};
     }
-    if ('0' in configUserDiskQuota[path]) {
-      throw new Error(`The root user (uid 0) already has a configured quota for path ${path}! This is the same as setting the xfs_default_user_quota property.`)
+    if ('0' in configUserDiskQuota[quotaPath]) {
+      throw new Error(`The root user (uid 0) already has a configured quota for path ${quotaPath}! This is the same as setting the xfs_default_user_quota property.`)
     }
-    configUserDiskQuota[path]['0'] = quotaConfig;
+    configUserDiskQuota[quotaPath]['0'] = quotaConfig;
   }
 
   const configUsers = config.users.reduce((out, u) => {
@@ -165,9 +165,9 @@ export function parseConfig(config) {
   };
 }
 
-export async function doesDirectoryExist(path) {
+export async function doesDirectoryExist(dirPath) {
   try {
-    await access(path);
+    await access(dirPath);
     return true;
   } catch (error) {
     if (error.code === 'ENOENT') {
@@ -335,15 +335,15 @@ export function makeQuotaConfig(bytes_soft_limit, bytes_hard_limit, inodes_soft_
 
 /**
  * Retrieves the disk quota information for a given path.
- * @param {string} path - The path for which to retrieve the disk quota.
+ * @param {string} dirPath - The path for which to retrieve the disk quota.
  * @returns {Promise<Object>} - A promise that resolves to an object of the form { <uid>: { bytes_soft_limit, bytes_hard_limit, inodes_soft_limit, inodes_hard_limit } }
  */
-export async function getUserDiskQuotaForPath(path) {
+export async function getUserDiskQuotaForPath(dirPath) {
   // turn off verbosity temporarily
   const zxIsVerbose = $.verbose;
   $.verbose = false;
   // outputs <uid> <block soft> <block hard> <inode soft> <inode hard> where block is in 1KiB units
-  const repquotaResult = await $`repquota ${path} --user --no-names --raw-grace | grep '^#' | awk '{print $1,$4,$5,$8,$9}' | cut -c2-`;
+  const repquotaResult = await $`repquota ${dirPath} --user --no-names --raw-grace | grep '^#' | awk '{print $1,$4,$5,$8,$9}' | cut -c2-`;
   $.verbose = zxIsVerbose;
   const lines = repquotaResult.stdout
     .split("\n")
@@ -364,11 +364,11 @@ export async function getUserDiskQuotaForPath(path) {
 
 /**
  * Retrieves the disk quota for multiple paths.
- * @param {string[]} paths - An array of paths for which to retrieve the disk quota.
- * @returns {Promise<Object>} - A promise that resolves to an object of the form { <path>: { <uid>: { bytes_soft_limit, bytes_hard_limit, inodes_soft_limit, inodes_hard_limit } } }
+ * @param {string[]} dirPaths - An array of paths for which to retrieve the disk quota.
+ * @returns {Promise<Object>} - A promise that resolves to an object of the form { <dirPath>: { <uid>: { bytes_soft_limit, bytes_hard_limit, inodes_soft_limit, inodes_hard_limit } } }
  */
-export async function getDiskQuota(paths) {
-  return Object.fromEntries(await Promise.all(paths.map(async (p) => [p, await getUserDiskQuotaForPath(p)])));
+export async function getDiskQuota(dirPaths) {
+  return Object.fromEntries(await Promise.all(dirPaths.map(async (p) => [p, await getUserDiskQuotaForPath(p)])));
 }
 
 export function unique(arr) {
