@@ -331,7 +331,9 @@ await Promise.all(
   newUsers.map(async (u) => Promise.all(
     config.managed_user_directories.map(async (d) => {
       const formatdir = d.replace("%u", configUsers[u].username).replace("%U", configUsers[u].uid);
-      await $`mkdir -p ${formatdir}`;
+      await $`mkdir -p -m u=rwx,g=rx,o=rx ${formatdir}`;
+      await $`chmod 700 ${formatdir}`;
+      await $`chown ${configUsers[u].uid}:${configUsers[u].primary_group} ${formatdir}`;
     })
   ))
 )

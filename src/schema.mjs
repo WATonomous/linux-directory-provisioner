@@ -104,7 +104,7 @@ export const configSchema = {
     },
     managed_user_directories: {
       type: "array",
-      description: "List of directories to create and delete automatically for each user. Supports templating with %u (username) and %U (uid)",
+      description: "List of directories to create and delete automatically for each user. Supports templating with %u (username) and %U (uid). The script will create the directory with permissions 700 and ownership of the user. If not already existing, directories leading up to the directory will be created with permissions 755 and ownership of the provisioner user.",
       items: { type: "string" },
       default: [],
     },
