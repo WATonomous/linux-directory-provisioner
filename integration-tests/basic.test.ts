@@ -216,7 +216,7 @@ describe("Basic", () => {
         }
     }, 60000);
 
-    test.only("should throw an error if the parent directory of the ssh key location does not exist", async () => {
+    test("should throw an error if the parent directory of the ssh key location does not exist", async () => {
         basicConfig.users[0].ssh_authorized_keys_path = "/tmp/ssh-keys/%u/%U/.ssh/authorized_keys";
         basicConfig.users[0].ssh_authorized_keys = [
             "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDwLVH+sBKaWb09IfaGkyqF9LEds6UN6grSQTieVD0ZW",
