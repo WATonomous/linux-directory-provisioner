@@ -243,10 +243,10 @@ export async function getExistingDirectory(config) {
 
   const lingerStates = Object.fromEntries(Object.keys(users).map((u) => [u, lingerUsernames.includes(u)]));
 
-  const managedDirectoriesPerUser = Object.fromEntries(await Promise.all(Object.keys(users).map(async (user) => {
-    const directories = config.managed_user_directories.map(d => d.replace(/%u/g, user.username).replace(/%U/g, user.uid));
+  const managedDirectoriesPerUser = Object.fromEntries(await Promise.all(Object.keys(users).map(async (username) => {
+    const directories = config.managed_user_directories.map(d => d.replace(/%u/g, username).replace(/%U/g, users[username].uid));
     const exists = await Promise.all(directories.map(doesDirectoryExist));
-    return [user, directories.filter((d, i) => exists[i])];
+    return [username, directories.filter((d, i) => exists[i])];
   })));
 
   return { users, passwords, groups, lingerStates, managedDirectoriesPerUser };

@@ -199,7 +199,7 @@ const requirePasswordUpdate = Object.keys(configPasswords).filter(
 );
 const requireSSHKeyUpdate = Object.keys(configSSHKeys).filter((u) => newUsers.includes(u) || !deepEqual(sshKeys[u], configSSHKeys[u]));
 const requireLingerUpdate = Object.keys(configLinger).filter((u) => newUsers.includes(u) || lingerStates[u] !== configLinger[u]);
-const requireManagedUserDirUpdate = Object.keys(configManagedDirectoriesPerUser).filter((u) => newUsers.includes(u) || !deepEqual(configManagedDirectoriesPerUser[u], managedDirectoriesPerUser[u]));
+const requireManagedUserDirCreate = Object.keys(configManagedDirectoriesPerUser).filter((u) => newUsers.includes(u) || !deepEqual(configManagedDirectoriesPerUser[u], managedDirectoriesPerUser[u]));
 
 const diskQuotaChanges = Object.fromEntries(
   diskQuotaPaths.map((p) => {
@@ -245,7 +245,7 @@ console.log("usermodArgs", usermodArgs);
 console.log("requiresSSHKeyUpdate", requireSSHKeyUpdate);
 console.log("requiresPasswordUpdate", requirePasswordUpdate);
 console.log("requireLingerUpdate", requireLingerUpdate);
-console.log("requiresManagedUserDirUpdate", requireManagedUserDirUpdate);
+console.log("requireManagedUserDirCreate", requireManagedUserDirCreate);
 
 console.log("Disk quota changes",
   objectMap(diskQuotaChanges, quotas =>
@@ -413,11 +413,10 @@ for (const [p, quotas] of Object.entries(diskQuotaChanges)) {
 }
 console.timeLog("diskquota")
 
-console.log(`Updating managed user directories for ${requireManagedUserDirUpdate.length} users...`);
+console.log(`Creating managed user directories for ${requireManagedUserDirCreate.length} user(s)...`);
 console.time("manageduserdirs")
-for (const username of requireManagedUserDirUpdate) {
+for (const username of requireManagedUserDirCreate) {
   for (const dir of configManagedDirectoriesPerUser[username]) {
-    await $`rm -rf ${dir}`;
     await $`mkdir -p -m u=rwx,g=rx,o=rx ${dir}`;
     await $`chmod 700 ${dir}`;
     await $`chown ${configUsers[username].uid}:${configUsers[username].primary_group} ${dir}`;
