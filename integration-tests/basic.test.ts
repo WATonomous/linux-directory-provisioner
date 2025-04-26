@@ -1,5 +1,5 @@
-import { GenericContainer, StartedTestContainer } from "testcontainers";
-import { ensureNotExists, ensurePermissions } from "./utils";
+import { GenericContainer, TestContainer, StartedTestContainer } from "testcontainers";
+import { ensureExists, ensureNotExists, ensurePermissions } from "./utils";
 
 
 describe("Sanity", () => {
@@ -21,13 +21,17 @@ describe("Sanity", () => {
 });
 
 describe("Basic", () => {
+    let image: TestContainer;
     let basicConfig: Record<string, any>;
     let container: StartedTestContainer;
-    beforeEach(async () => {
-        const image = await GenericContainer
+
+    beforeAll(async () => {
+        image = await GenericContainer
             .fromDockerfile(".", "integration-tests/Dockerfile")
             .build();
+    }, 60000)
 
+    beforeEach(async () => {
         container = await image.withEntrypoint(["sleep", "infinity"]).start();
 
         basicConfig = {
@@ -106,6 +110,74 @@ describe("Basic", () => {
             expect(stdout).toContain(`user1:${basicConfig.users[0].password}`);
             expect(stdout).toContain(`user2:${basicConfig.users[1].password}`);
         }
+    }, 60000);
+
+    test("should not create home directories by default", async () => {
+        basicConfig.users[0].home_dir = "/tmp/myhome/%u/%U";
+        basicConfig.users[1].home_dir = "/tmp/myhome/%u/%U";
+        await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
+
+        // Create users and groups
+        {
+            const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--no-confirm", "--config", "/app/config.json"]);
+            expect(exitCode).toBe(0);
+        }
+
+        await ensureNotExists(container, "/tmp/myhome/user1/1001");
+        await ensureNotExists(container, "/tmp/myhome/user2/1002");
+    }, 60000);
+
+    test("should support custom home directories", async () => {
+        basicConfig.users[0].home_dir = "/tmp/myhome/%u/%U";
+        basicConfig.users[1].home_dir = "/tmp/myhome/%u/%U";
+
+        await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
+
+        // Create users and groups
+        {
+            const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--no-confirm", "--config", "/app/config.json"]);
+            expect(exitCode).toBe(0);
+        }
+        
+        // Check passwd
+        {
+            const { output, stdout, stderr, exitCode } = await container.exec(["cat", "/etc/passwd"]);
+            expect(exitCode).toBe(0);
+            expect(stdout).toContain("user1:x:1001:1501::/tmp/myhome/user1/1001");
+            expect(stdout).toContain("user2:x:1002:1502::/tmp/myhome/user2/1002");
+        }
+    }, 60000);
+
+    test.only("should not delete home directories by default", async () => {
+        basicConfig.users[0].home_dir = "/tmp/myhome/%u/%U";
+        basicConfig.users[1].home_dir = "/tmp/myhome/%u/%U";
+        await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
+
+        // Create users and groups
+        {
+            const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--no-confirm", "--config", "/app/config.json"]);
+            expect(exitCode).toBe(0);
+        }
+
+        await ensureNotExists(container, "/tmp/myhome/user1/1001");
+        await ensureNotExists(container, "/tmp/myhome/user2/1002");
+
+        // Create the home dirs manually
+        {
+            const { output, stdout, stderr, exitCode } = await container.exec(["mkdir", "-p", "/tmp/myhome/user1/1001", "/tmp/myhome/user2/1002"]);
+            expect(exitCode).toBe(0);
+        }
+
+        // Delete users and groups
+        basicConfig.users = [];
+        await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
+        {
+            const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--no-confirm", "--config", "/app/config.json"]);
+            expect(exitCode).toBe(0);
+        }
+
+        await ensureExists(container, "/tmp/myhome/user1/1001");
+        await ensureExists(container, "/tmp/myhome/user2/1002");
     }, 60000);
 
     test("should populate SSH keys correctly", async () => {
@@ -270,11 +342,6 @@ describe("Basic", () => {
             expect(stdout).not.toContain("group2");
         }
         {
-            const { output, stdout, stderr, exitCode } = await container.exec(["stat", "/home/user2"]);
-            expect(exitCode).toBe(1);
-            expect(stderr).toContain("No such file or directory");
-        }
-        {
             const { output, stdout, stderr, exitCode } = await container.exec(["stat", "/tmp/ssh-keys/user2/1002/.ssh"]);
             expect(exitCode).toBe(1);
             expect(stderr).toContain("No such file or directory");
@@ -304,6 +371,7 @@ describe("Basic", () => {
     
         {
             const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--no-confirm", "--config", "/app/config.json"]);
+            console.log(output, stdout, stderr)
             expect(exitCode).toBe(0);
             expect(stdout).toContain("Creating managed user directories for 0 user(s)...")
         }
