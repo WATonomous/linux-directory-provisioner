@@ -199,6 +199,13 @@ describe("Basic", () => {
             expect(exitCode).toBe(0);
         }
 
+        // Check that the appropriate keys exist
+        await ensureExists(container, "/home/user1/.ssh/authorized_keys");
+        await ensureNotExists(container, "/home/user2/.ssh/authorized_keys");
+
+        // Check permissions
+        await ensurePermissions(container, "/home/user1/.ssh/authorized_keys", "600 user1 group1");
+
         // Check SSH keys
         {
             const { output, stdout, stderr, exitCode } = await container.exec(["cat", "/home/user1/.ssh/authorized_keys"]);
@@ -278,12 +285,12 @@ describe("Basic", () => {
             expect(exitCode).toBe(0);
         }
 
-        // Check that the keys exist
+        // Check that the appropriate keys exist
         await ensureExists(container, "/tmp/ssh-keys/user1/1001/.ssh/authorized_keys");
         await ensureNotExists(container, "/tmp/ssh-keys/user2/1002/.ssh/authorized_keys");
 
         // Check permissions
-        await ensurePermissions(container, "/tmp/ssh-keys/user1/1001/.ssh/authorized_keys", "600 user1 user1");
+        await ensurePermissions(container, "/tmp/ssh-keys/user1/1001/.ssh/authorized_keys", "600 user1 group1");
 
         // Check content
         {
