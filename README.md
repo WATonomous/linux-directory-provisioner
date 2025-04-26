@@ -23,12 +23,8 @@ npm version prerelease --preid alpha
 npm version patch # or minor or major
 ```
 
-2. Push the new version to GitHub:
-```bash
-git push --atomic origin main <tag>
-```
-
-3. Create a release on GitHub with the tag you just pushed.
+2. Merge the changes into main ([example for `0.0.4-alpha.3`](https://github.com/WATonomous/linux-directory-provisioner/pull/13)).
+3. Create a release on GitHub with the appropriate tag name (e.g. create a tag `v0.0.4-alpha.3` during release creation).
 4. The GitHub Action pipeline will automatically publish the new version to NPM.
 
 ## Development
