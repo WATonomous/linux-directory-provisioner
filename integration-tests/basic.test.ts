@@ -1,4 +1,5 @@
 import { GenericContainer, StartedTestContainer } from "testcontainers";
+import { ensureNotExists, ensurePermissions } from "./utils";
 
 
 describe("Sanity", () => {
@@ -290,11 +291,13 @@ describe("Basic", () => {
             expect(exitCode).toBe(0);
         }
 
-        {
-            const { output, stdout, stderr, exitCode } = await container.exec(["stat", "/test/user1/1001/.test"]);
-            expect(exitCode).toBe(0);
-        }
-        
+        // The folder should be owned by the user and not accessible by others
+        await ensurePermissions(container, "/test/user1/1001/.test", "700 user1 group1");
+        // All the folders leading up to the file should be 755 root root
+        await ensurePermissions(container, "/test/user1/1001/", "755 root root");
+        await ensurePermissions(container, "/test/user1/", "755 root root");
+        await ensurePermissions(container, "/test/", "755 root root");
+
         basicConfig.users.splice(0, 1);
         await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
     
@@ -303,12 +306,7 @@ describe("Basic", () => {
             expect(exitCode).toBe(0);
         }
 
-        {
-            const { output, stdout, stderr, exitCode } = await container.exec(["stat", "/test/user1/1001/.test"]);
-            console.log(output, stdout, stderr, exitCode)
-            expect(exitCode).toBe(1);
-            expect(stderr).toContain("No such file or directory");
-        }
+        await ensureNotExists(container, "/test/user1/1001/.test");
     })
 
     afterEach(async () => {
