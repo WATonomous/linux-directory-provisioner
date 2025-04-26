@@ -100,6 +100,7 @@ export function parseConfig(config) {
   const configPasswords = Object.fromEntries(config.users.map((u) => [u.username, u.password]));
   const configSSHKeys = Object.fromEntries(config.users.map((u) => [u.username, u.ssh_authorized_keys]));
   const configLinger = Object.fromEntries(config.users.map((u) => [u.username, u.linger]));
+  const configManagedDirectoriesPerUser = Object.fromEntries(config.users.map((u) => [u.username, config.managed_user_directories.map(d => d.replace(/%u/g, u.username).replace(/%U/g, u.uid))]));
   // Object of the form { <path>: { <uid>: { ...quotaConfig } } }
   const configUserDiskQuota = objectMap(
     groupBy(
@@ -152,12 +153,13 @@ export function parseConfig(config) {
     configUpdatePassword,
     configLinger,
     configUserDiskQuota,
+    configManagedDirectoriesPerUser,
   };
 }
 
-export async function isLingerSupported() {
+export async function doesDirectoryExist(path) {
   try {
-    await access("/var/lib/systemd/linger");
+    await access(path);
     return true;
   } catch (error) {
     if (error.code === 'ENOENT') {
@@ -167,7 +169,11 @@ export async function isLingerSupported() {
   }
 }
 
-export async function getExistingDirectory() {
+export async function isLingerSupported() {
+  return doesDirectoryExist("/var/lib/systemd/linger");
+}
+
+export async function getExistingDirectory(config) {
   // Load current configuration from system
   const [userLines, shadowLines, groupLines, lingerUsernames] = await Promise.all([
     readFile("/etc/passwd", { encoding: "utf8" }).then((s) => s.split("\n").filter((l) => l)),
@@ -237,7 +243,13 @@ export async function getExistingDirectory() {
 
   const lingerStates = Object.fromEntries(Object.keys(users).map((u) => [u, lingerUsernames.includes(u)]));
 
-  return { users, passwords, groups, lingerStates };
+  const managedDirectoriesPerUser = Object.fromEntries(await Promise.all(Object.keys(users).map(async (user) => {
+    const directories = config.managed_user_directories.map(d => d.replace(/%u/g, user.username).replace(/%U/g, user.uid));
+    const exists = await Promise.all(directories.map(doesDirectoryExist));
+    return [user, directories.filter((d, i) => exists[i])];
+  })));
+
+  return { users, passwords, groups, lingerStates, managedDirectoriesPerUser };
 }
 
 // check if value is primitive

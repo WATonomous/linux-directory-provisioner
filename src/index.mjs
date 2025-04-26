@@ -69,6 +69,7 @@ const {
   configUpdatePassword,
   configLinger,
   configUserDiskQuota,
+  configManagedDirectoriesPerUser,
 } = parseConfig(config);
 console.timeLog("parseConfig");
 
@@ -78,7 +79,13 @@ console.timeLog("parseConfig");
 
 console.log("Loading existing directory...");
 console.time("getExistingDirectory");
-const { users, passwords, groups, lingerStates } = await getExistingDirectory();
+const {
+  users,
+  passwords,
+  groups,
+  lingerStates,
+  managedDirectoriesPerUser,
+} = await getExistingDirectory(config);
 console.timeLog("getExistingDirectory");
 
 console.log(`Loaded ${Object.keys(users).length} users and ${Object.keys(groups).length} groups`);
@@ -192,6 +199,8 @@ const requirePasswordUpdate = Object.keys(configPasswords).filter(
 );
 const requireSSHKeyUpdate = Object.keys(configSSHKeys).filter((u) => newUsers.includes(u) || !deepEqual(sshKeys[u], configSSHKeys[u]));
 const requireLingerUpdate = Object.keys(configLinger).filter((u) => newUsers.includes(u) || lingerStates[u] !== configLinger[u]);
+const requireManagedUserDirUpdate = Object.keys(configManagedDirectoriesPerUser).filter((u) => newUsers.includes(u) || !deepEqual(configManagedDirectoriesPerUser[u], managedDirectoriesPerUser[u]));
+
 const diskQuotaChanges = Object.fromEntries(
   diskQuotaPaths.map((p) => {
     const existing = diskQuota[p];
@@ -236,6 +245,7 @@ console.log("usermodArgs", usermodArgs);
 console.log("requiresSSHKeyUpdate", requireSSHKeyUpdate);
 console.log("requiresPasswordUpdate", requirePasswordUpdate);
 console.log("requireLingerUpdate", requireLingerUpdate);
+console.log("requiresManagedUserDirUpdate", requireManagedUserDirUpdate);
 
 console.log("Disk quota changes",
   objectMap(diskQuotaChanges, quotas =>
@@ -326,17 +336,6 @@ for (const u of newUsers) {
 
   await $`useradd ${args} ${u}`;
 }
-// create dirs for new users
-await Promise.all(
-  newUsers.map(async (u) => Promise.all(
-    config.managed_user_directories.map(async (d) => {
-      const formatdir = d.replace("%u", configUsers[u].username).replace("%U", configUsers[u].uid);
-      await $`mkdir -p -m u=rwx,g=rx,o=rx ${formatdir}`;
-      await $`chmod 700 ${formatdir}`;
-      await $`chown ${configUsers[u].uid}:${configUsers[u].primary_group} ${formatdir}`;
-    })
-  ))
-)
 console.timeLog("useradd")
 
 console.log(`Updating user properties for ${usermodArgs.length} users...`);
@@ -413,3 +412,15 @@ for (const [p, quotas] of Object.entries(diskQuotaChanges)) {
   pipe.stdin.end();
 }
 console.timeLog("diskquota")
+
+console.log(`Updating managed user directories for ${requireManagedUserDirUpdate.length} users...`);
+console.time("manageduserdirs")
+for (const username of requireManagedUserDirUpdate) {
+  for (const dir of configManagedDirectoriesPerUser[username]) {
+    await $`rm -rf ${dir}`;
+    await $`mkdir -p -m u=rwx,g=rx,o=rx ${dir}`;
+    await $`chmod 700 ${dir}`;
+    await $`chown ${configUsers[username].uid}:${configUsers[username].primary_group} ${dir}`;
+  }
+}
+console.timeLog("manageduserdirs")
