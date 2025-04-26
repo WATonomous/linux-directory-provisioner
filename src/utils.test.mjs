@@ -195,7 +195,7 @@ describe("getExistingDirectory", () => {
       }
     };
 
-    const result = await getExistingDirectory();
+    const result = await getExistingDirectory({ managed_user_directories: [] });
     expect(result).toEqual(expectedData);
   });
 
