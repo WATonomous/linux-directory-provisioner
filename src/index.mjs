@@ -273,6 +273,17 @@ await Promise.all(
     await $`rm -rf ${expandedBaseDir}`;
   })
 );
+// delete managed dirs
+await Promise.all(
+  usersToDelete.map(async (u) => Promise.all(
+      config.managed_user_directories.map(async (d) => {
+        const formatdir = d.replace("%u", users[u].username).replace("%U", users[u].uid);
+        await $`rm -rf ${formatdir}`;
+      })
+    )
+  )
+)
+
 console.timeLog("userdel")
 
 console.log(`Deleting ${groupsToDelete.length} groups...`);
@@ -315,6 +326,15 @@ for (const u of newUsers) {
 
   await $`useradd ${args} ${u}`;
 }
+// create dirs for new users
+await Promise.all(
+  newUsers.map(async (u) => Promise.all(
+    config.managed_user_directories.map(async (d) => {
+      const formatdir = d.replace("%u", configUsers[u].username).replace("%U", configUsers[u].uid);
+      await $`mkdir -p ${formatdir}`;
+    })
+  ))
+)
 console.timeLog("useradd")
 
 console.log(`Updating user properties for ${usermodArgs.length} users...`);

@@ -280,6 +280,37 @@ describe("Basic", () => {
         }
     }, 60000);
 
+    test("should create and delete managed user directories", async () => {
+        basicConfig.managed_user_directories = ["/test/%u/%U/.test"];
+        
+        await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
+
+        {
+            const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--no-confirm", "--config", "/app/config.json"]);
+            expect(exitCode).toBe(0);
+        }
+
+        {
+            const { output, stdout, stderr, exitCode } = await container.exec(["stat", "/test/user1/1001/.test"]);
+            expect(exitCode).toBe(0);
+        }
+        
+        basicConfig.users.splice(0, 1);
+        await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
+    
+        {
+            const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--no-confirm", "--config", "/app/config.json"]);
+            expect(exitCode).toBe(0);
+        }
+
+        {
+            const { output, stdout, stderr, exitCode } = await container.exec(["stat", "/test/user1/1001/.test"]);
+            console.log(output, stdout, stderr, exitCode)
+            expect(exitCode).toBe(1);
+            expect(stderr).toContain("No such file or directory");
+        }
+    })
+
     afterEach(async () => {
         await container.stop();
     });
