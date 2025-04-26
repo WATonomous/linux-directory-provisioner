@@ -199,7 +199,7 @@ const requirePasswordUpdate = Object.keys(configPasswords).filter(
 );
 const requireSSHKeyUpdate = Object.keys(configSSHKeys).filter((u) => newUsers.includes(u) || !deepEqual(sshKeys[u], configSSHKeys[u]));
 const requireLingerUpdate = Object.keys(configLinger).filter((u) => newUsers.includes(u) || lingerStates[u] !== configLinger[u]);
-const requireManagedUserDirCreate = Object.keys(configManagedDirectoriesPerUser).filter((u) => newUsers.includes(u) || !deepEqual(configManagedDirectoriesPerUser[u], managedDirectoriesPerUser[u]));
+const requireManagedUserDirCreate = Object.keys(configManagedDirectoriesPerUser).filter((u) => configManagedDirectoriesPerUser[u].length > 0 && !deepEqual(configManagedDirectoriesPerUser[u], managedDirectoriesPerUser[u]));
 
 const diskQuotaChanges = Object.fromEntries(
   diskQuotaPaths.map((p) => {
