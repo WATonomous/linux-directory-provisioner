@@ -289,6 +289,7 @@ describe("Basic", () => {
         {
             const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--no-confirm", "--config", "/app/config.json"]);
             expect(exitCode).toBe(0);
+            expect(stdout).toContain("Creating managed user directories for 2 user(s)...");
         }
 
         // The folder should be owned by the user and not accessible by others
@@ -304,9 +305,37 @@ describe("Basic", () => {
         {
             const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--no-confirm", "--config", "/app/config.json"]);
             expect(exitCode).toBe(0);
+            expect(stdout).toContain("Creating managed user directories for 0 user(s)...")
         }
 
         await ensureNotExists(container, "/test/user1/1001/.test");
+    })
+
+    test("should handle existing managed user directories", async () => {
+        // Create the user
+        await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
+        {
+            const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--no-confirm", "--config", "/app/config.json"]);
+            expect(exitCode).toBe(0);
+            expect(stdout).toContain("Creating managed user directories for 0 user(s)...");
+        }
+
+        // Add a managed user directory
+        basicConfig.managed_user_directories = ["/test/%u/%U/.test"];
+        await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
+
+        // Simulate an existing managed user directory
+        {
+            const { output, stdout, stderr, exitCode } = await container.exec(["mkdir", "-p", "/test/user1/1001/.test"]);
+            expect(exitCode).toBe(0);
+        }
+
+        // Provision
+        {
+            const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--no-confirm", "--config", "/app/config.json"]);
+            expect(exitCode).toBe(0);
+            expect(stdout).toContain("Creating managed user directories for 1 user(s)...");
+        }
     })
 
     afterEach(async () => {
