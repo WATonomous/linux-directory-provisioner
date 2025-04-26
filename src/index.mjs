@@ -376,6 +376,8 @@ await Promise.all(
     // Write the SSH keys
     await $`echo "# This file is managed by the Linux Directory Provisioner. Please do not modify it manually." > ${keysPath}`;
     await $`echo ${configSSHAuthorizedKeys[username].join("\n")} >> ${keysPath}`;
+    await $`chown ${configUsers[username].uid}:${configUsers[username].primary_group} ${keysPath}`;
+    await $`chmod 600 ${keysPath}`;
   })
 );
 console.timeLog("sshauthorizedkeys")
