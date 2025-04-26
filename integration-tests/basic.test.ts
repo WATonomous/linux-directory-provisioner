@@ -148,7 +148,7 @@ describe("Basic", () => {
         }
     }, 60000);
 
-    test.only("should not delete home directories by default", async () => {
+    test("should not delete home directories by default", async () => {
         basicConfig.users[0].home_dir = "/tmp/myhome/%u/%U";
         basicConfig.users[1].home_dir = "/tmp/myhome/%u/%U";
         await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
@@ -186,6 +186,11 @@ describe("Basic", () => {
             "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDwLVH+sBKaWb09IfaGkyqF9LEds6UN6grSQTieVD0ZW",
         ];
 
+        basicConfig.managed_user_directories = [
+            "/home/%u",
+            "/home/%u/.ssh",
+        ]
+
         await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
 
         // Create users and groups
@@ -194,6 +199,13 @@ describe("Basic", () => {
             expect(exitCode).toBe(0);
         }
 
+        // Check that the appropriate keys exist
+        await ensureExists(container, "/home/user1/.ssh/authorized_keys");
+        await ensureNotExists(container, "/home/user2/.ssh/authorized_keys");
+
+        // Check permissions
+        await ensurePermissions(container, "/home/user1/.ssh/authorized_keys", "600 user1 group1");
+
         // Check SSH keys
         {
             const { output, stdout, stderr, exitCode } = await container.exec(["cat", "/home/user1/.ssh/authorized_keys"]);
@@ -201,6 +213,21 @@ describe("Basic", () => {
             for (const key of basicConfig.users[0].ssh_authorized_keys) {
                 expect(stdout).toContain(key);
             }
+        }
+    }, 60000);
+
+    test("should throw an error if the parent directory of the ssh key location does not exist", async () => {
+        basicConfig.users[0].ssh_authorized_keys_path = "/tmp/ssh-keys/%u/%U/.ssh/authorized_keys";
+        basicConfig.users[0].ssh_authorized_keys = [
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDwLVH+sBKaWb09IfaGkyqF9LEds6UN6grSQTieVD0ZW",
+        ];
+        await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
+        
+        // Create users and groups
+        {
+            const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--no-confirm", "--config", "/app/config.json"]);
+            expect(exitCode).toBe(1);
+            expect(stderr).toContain("No such file or directory");
         }
     }, 60000);
 
@@ -254,12 +281,16 @@ describe("Basic", () => {
         }
     }, 60000);
 
-    test("should respect user_ssh_key_base_dir", async () => {
-        basicConfig.user_ssh_key_base_dir = "/tmp/ssh-keys/%u/%U/.ssh";
+    test("should allow custom ssh key locations", async () => {
         basicConfig.users[0].ssh_authorized_keys = [
             "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDwLVH+sBKaWb09IfaGkyqF9LEds6UN6grSQTieVD0ZW",
             "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDwLVH+sBKaWb09IfaGkyqF9LEds6UN6grSQTieVD0ZW",
         ];
+        basicConfig.users[0].ssh_authorized_keys_path = "/tmp/ssh-keys/%u/%U/.ssh/authorized_keys";
+
+        basicConfig.managed_user_directories = [
+            "/tmp/ssh-keys/%u/%U/.ssh",
+        ]
 
         await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
 
@@ -269,7 +300,14 @@ describe("Basic", () => {
             expect(exitCode).toBe(0);
         }
 
-        // Check SSH keys
+        // Check that the appropriate keys exist
+        await ensureExists(container, "/tmp/ssh-keys/user1/1001/.ssh/authorized_keys");
+        await ensureNotExists(container, "/tmp/ssh-keys/user2/1002/.ssh/authorized_keys");
+
+        // Check permissions
+        await ensurePermissions(container, "/tmp/ssh-keys/user1/1001/.ssh/authorized_keys", "600 user1 group1");
+
+        // Check content
         {
             const { output, stdout, stderr, exitCode } = await container.exec(["cat", "/tmp/ssh-keys/user1/1001/.ssh/authorized_keys"]);
             expect(exitCode).toBe(0);
@@ -279,38 +317,7 @@ describe("Basic", () => {
         }
     }, 60000);
 
-    test("should respect use_strict_ssh_key_dir_permissions", async () => {
-        basicConfig.user_ssh_key_base_dir = "/tmp/ssh-keys/%u/%U/.ssh";
-        basicConfig.use_strict_ssh_key_dir_permissions = true;
-        basicConfig.users[0].ssh_authorized_keys = [
-            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDwLVH+sBKaWb09IfaGkyqF9LEds6UN6grSQTieVD0ZW",
-            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDwLVH+sBKaWb09IfaGkyqF9LEds6UN6grSQTieVD0ZW",
-        ];
-
-        await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
-
-        // Create users and groups
-        {
-            const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--no-confirm", "--config", "/app/config.json"]);
-            expect(exitCode).toBe(0);
-        }
-
-        // Check folder permissions
-        {
-            const { output, stdout, stderr, exitCode } = await container.exec(["stat", "--format", "%a %U %G", "/tmp/ssh-keys/"]);
-            expect(exitCode).toBe(0);
-            expect(stdout).toContain("755 root root");
-        }
-        {
-            const { output, stdout, stderr, exitCode } = await container.exec(["stat", "--format", "%a %U %G", "/tmp/ssh-keys/user1"]);
-            expect(exitCode).toBe(0);
-            expect(stdout).toContain("750 root group1");
-        }
-    }, 60000);
-
     test("should delete users and groups that have been removed from the config", async () => {
-        basicConfig.user_ssh_key_base_dir = "/tmp/ssh-keys/%u/%U/.ssh";
-
         await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
 
         // Create users and groups
@@ -341,11 +348,6 @@ describe("Basic", () => {
             expect(exitCode).toBe(0);
             expect(stdout).not.toContain("group2");
         }
-        {
-            const { output, stdout, stderr, exitCode } = await container.exec(["stat", "/tmp/ssh-keys/user2/1002/.ssh"]);
-            expect(exitCode).toBe(1);
-            expect(stderr).toContain("No such file or directory");
-        }
     }, 60000);
 
     test("should create and delete managed user directories", async () => {
@@ -371,7 +373,6 @@ describe("Basic", () => {
     
         {
             const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--no-confirm", "--config", "/app/config.json"]);
-            console.log(output, stdout, stderr)
             expect(exitCode).toBe(0);
             expect(stdout).toContain("Creating managed user directories for 0 user(s)...")
         }

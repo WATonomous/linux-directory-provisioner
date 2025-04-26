@@ -46,7 +46,11 @@ const userSchema = {
     password: { type: "string" },
     update_password: { enum: ["always", "on_create"] },
     uid: { type: "number" },
-    home_dir: { type: "string", description: "Home directory for the user. Supports templating with %u (username) and %U (uid). If not specified, the default will be the system default (e.g. `/home/%u` on most Linux distributions)" },
+    home_dir: { 
+      type: "string",
+      default: "/home/%u",
+      description: "Home directory for the user. Supports templating with %u (username) and %U (uid). Defaults to `/home/%u`."
+    },
     primary_group: { type: "string" },
     additional_groups: {
       type: "array",
@@ -56,6 +60,10 @@ const userSchema = {
     },
     shell: { type: "string", default: "/bin/bash" },
     ssh_authorized_keys: { type: "array", items: { type: "string" }, default: [] },
+    ssh_authorized_keys_path: {
+      type: "string",
+      description: "Path to the SSH authorized keys file. Supports templating with %u (username) and %U (uid). Defaults to `<home_dir>/.ssh/authorized_keys` where `<home_dir>` is the value of the `home_dir` property."
+    },
     linger: { type: "boolean", default: false },
     disk_quota: {
       type: "array",
@@ -97,11 +105,6 @@ export const configSchema = {
       items: { type: "number" },
       minItems: 2,
       maxItems: 2,
-    },
-    user_ssh_key_base_dir: {
-      type: "string",
-      description: "Base directory for user SSH keys. Supports templating with %u (username) and %U (uid)",
-      default: "/home/%u/.ssh",
     },
     managed_user_directories: {
       type: "array",
