@@ -100,7 +100,7 @@ export function parseConfig(config) {
   const configUpdatePassword = Object.fromEntries(config.users.map((u) => [u.username, u.update_password]));
   const configPasswords = Object.fromEntries(config.users.map((u) => [u.username, u.password]));
   const configSSHAuthorizedKeys = Object.fromEntries(config.users.map((u) => [u.username, u.ssh_authorized_keys]));
-  const configSSHAuthorizedKeysPath = Object.fromEntries(config.users.map((u) => [u.username, u.ssh_authorized_keys_path ?? path.join(u.home_dir, ".ssh", "authorized_keys").replace(/%u/g, u.username).replace(/%U/g, u.uid)]));
+  const configSSHAuthorizedKeysPath = Object.fromEntries(config.users.map((u) => [u.username, (u.ssh_authorized_keys_path ?? path.join(u.home_dir, ".ssh", "authorized_keys")).replace(/%u/g, u.username).replace(/%U/g, u.uid)]));
   const configLinger = Object.fromEntries(config.users.map((u) => [u.username, u.linger]));
   const configManagedDirectoriesPerUser = Object.fromEntries(config.users.map((u) => [u.username, config.managed_user_directories.map(d => d.replace(/%u/g, u.username).replace(/%U/g, u.uid))]));
   // Object of the form { <path>: { <uid>: { ...quotaConfig } } }
