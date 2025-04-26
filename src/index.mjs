@@ -326,7 +326,7 @@ for (const u of newUsers) {
     "--shell",
     configUsers[u].shell,
     "--home",
-    configUsers[u].home_dir.replaceAll("%u", u).replaceAll("%U", configUsers[u].uid),
+    configUsers[u].home_dir,
   ];
 
   if (configUsers[u].additional_groups.length > 0) {

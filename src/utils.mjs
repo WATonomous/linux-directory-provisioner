@@ -100,7 +100,7 @@ export function parseConfig(config) {
   const configUpdatePassword = Object.fromEntries(config.users.map((u) => [u.username, u.update_password]));
   const configPasswords = Object.fromEntries(config.users.map((u) => [u.username, u.password]));
   const configSSHAuthorizedKeys = Object.fromEntries(config.users.map((u) => [u.username, u.ssh_authorized_keys]));
-  const configSSHAuthorizedKeysPath = Object.fromEntries(config.users.map((u) => [u.username, u.ssh_authorized_keys_path ?? path.join(u.home_dir, ".ssh", "authorized_keys").replace(/%u/g, u.username).replace(/%U/g, u.uid)]));
+  const configSSHAuthorizedKeysPath = Object.fromEntries(config.users.map((u) => [u.username, (u.ssh_authorized_keys_path ?? path.join(u.home_dir, ".ssh", "authorized_keys")).replace(/%u/g, u.username).replace(/%U/g, u.uid)]));
   const configLinger = Object.fromEntries(config.users.map((u) => [u.username, u.linger]));
   const configManagedDirectoriesPerUser = Object.fromEntries(config.users.map((u) => [u.username, config.managed_user_directories.map(d => d.replace(/%u/g, u.username).replace(/%U/g, u.uid))]));
   // Object of the form { <path>: { <uid>: { ...quotaConfig } } }
@@ -133,17 +133,22 @@ export function parseConfig(config) {
   const configUsers = config.users.reduce((out, u) => {
     const {
       additional_groups,
+      home_dir,
       password: _password,
       update_password: _update_password,
       ssh_authorized_keys: _ssh_authorized_keys,
+      ssh_authorized_keys_path: _ssh_authorized_keys_path,
       linger: _linger,
       disk_quota: _disk_quota,
       ...rest
     } = u;
+
     out[u.username] = {
       ...rest,
       additional_groups: additional_groups.sort(),
+      home_dir: home_dir.replace(/%u/g, u.username).replace(/%U/g, u.uid),
     };
+
     return out;
   }, {});
 
@@ -217,6 +222,7 @@ export async function getExistingDirectory(config) {
       const uid = Number(t[2]);
       const primary_group = gidToGroupName[Number(t[3])];
       const additional_groups = userToGroups[username]?.filter((g) => g !== primary_group).sort() ?? [];
+      const home_dir = t[5];
       const shell = t[6];
 
       return {
@@ -224,6 +230,7 @@ export async function getExistingDirectory(config) {
         uid,
         primary_group,
         additional_groups,
+        home_dir,
         shell,
       };
     })
