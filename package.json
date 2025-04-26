@@ -10,7 +10,7 @@
     "start": "zx src/index.mjs",
     "lint": "eslint src/**/*.mjs",
     "transpile": "esbuild src/index.mjs --format=esm --bundle --platform=node --target=node20 --outfile=dist/index.mjs",
-    "prepublish": "npm run transpile",
+    "prepack": "npm run transpile",
     "test": "jest"
   },
   "author": "",
@@ -21,12 +21,16 @@
   },
   "devDependencies": {
     "@babel/preset-env": "^7.23.3",
+    "@types/jest": "^29.5.14",
     "esbuild": "^0.19.7",
     "eslint": "^8.54.0",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-config-prettier": "^9.0.0",
     "eslint-plugin-import": "^2.29.0",
-    "jest": "^29.7.0"
+    "jest": "^29.7.0",
+    "testcontainers": "^10.24.2",
+    "ts-jest": "^29.3.2",
+    "typescript": "^5.8.3"
   },
   "files": [
     "dist"

@@ -6,6 +6,7 @@ import path from "path";
 import { $, stdin, argv, question } from "zx";
 import { readFile } from "node:fs/promises";
 import {
+  isLingerSupported,
   getExistingDirectory,
   parseConfig,
   diffProperties,
@@ -266,8 +267,10 @@ for (const u of usersToDelete) {
 // delete SSH keys
 await Promise.all(
   usersToDelete.map(async (u) => {
-    const sshdir = config.user_ssh_key_base_dir.replace("%u", users[u].username).replace("%U", users[u].uid);
-    await $`rm -rf ${sshdir}`;
+    const username = u;
+    const {uid} = users[username];
+    const expandedBaseDir = config.user_ssh_key_base_dir.replaceAll("%u", username).replaceAll("%U", uid);
+    await $`rm -rf ${expandedBaseDir}`;
   })
 );
 // delete managed dirs
@@ -385,16 +388,20 @@ if (config.use_strict_ssh_key_dir_permissions) {
 }
 console.timeLog("sshkeys")
 
-console.log(`Updating linger state for ${requireLingerUpdate.length} users...`);
-console.time("linger")
-for (const username of requireLingerUpdate) {
-  if (configLinger[username]) {
-    await $`loginctl enable-linger ${username}`;
-  } else {
-    await $`loginctl disable-linger ${username}`;
+if (await isLingerSupported()) {
+  console.log(`Updating linger state for ${requireLingerUpdate.length} users...`);
+  console.time("linger")
+  for (const username of requireLingerUpdate) {
+    if (configLinger[username]) {
+      await $`loginctl enable-linger ${username}`;
+    } else {
+      await $`loginctl disable-linger ${username}`;
+    }
   }
+  console.timeLog("linger")
+} else {
+  console.log("Linger is not supported on this system. Skipping linger updates.")
 }
-console.timeLog("linger")
 
 console.log(`Updating disk quotas for ${Object.keys(diskQuotaChanges).length} path(s)...`);
 console.time("diskquota")

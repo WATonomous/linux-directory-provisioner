@@ -30,3 +30,18 @@ git push --atomic origin main <tag>
 
 3. Create a release on GitHub with the tag you just pushed.
 4. The GitHub Action pipeline will automatically publish the new version to NPM.
+
+## Development
+
+```bash
+# install dependencies
+npm ci
+# run
+npm run start
+# lint
+npm run lint
+# run unit tests
+npm run test -- src
+# run integration tests (make sure the Docker socket is in the default location or set DOCKER_HOST)
+npm run test -- integration-tests
+```
