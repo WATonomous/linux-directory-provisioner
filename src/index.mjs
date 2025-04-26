@@ -330,7 +330,7 @@ for (const u of newUsers) {
 await Promise.all(
   newUsers.map(async (u) => Promise.all(
     config.managed_user_directories.map(async (d) => {
-      const formatdir = d.replace("%u", users[u].username).replace("%U", users[u].uid);
+      const formatdir = d.replace("%u", configUsers[u].username).replace("%U", configUsers[u].uid);
       await $`mkdir -p ${formatdir}`;
     })
   ))

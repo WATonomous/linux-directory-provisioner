@@ -106,6 +106,7 @@ export const configSchema = {
       type: "array",
       description: "List of directories to create and delete automatically for each user. Supports templating with %u (username) and %U (uid)",
       items: { type: "string" },
+      default: [],
     },
     use_strict_ssh_key_dir_permissions: {
       type: "boolean",
