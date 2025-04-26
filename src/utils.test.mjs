@@ -110,7 +110,7 @@ describe("getExistingDirectory", () => {
     const originalReadFile = fsPromises.readFile;
     jest.spyOn(fsPromises, "readFile").mockImplementation((path) => {
       if (path === "/etc/passwd") {
-        return Promise.resolve("user1:x:1001:1001:User 1:/home/user1:/bin/bash\nuser2:x:1002:1002:User 2:/home/user2:/bin/bash");
+        return Promise.resolve("user1:x:1001:1001:User 1:/tmp/home/user1:/bin/bash\nuser2:x:1002:1002:User 2:/home/user2:/bin/bash");
       }
       if (path === "/etc/shadow") {
         return Promise.resolve("user1:$6$random_salt$encrypted_password1\nuser2:$6$random_salt$encrypted_password2");
@@ -151,6 +151,7 @@ describe("getExistingDirectory", () => {
           primary_group: "group1",
           additional_groups: ["group3"],
           shell: "/bin/bash",
+          home_dir: "/tmp/home/user1",
         },
         user2: {
           username: "user2",
@@ -158,6 +159,7 @@ describe("getExistingDirectory", () => {
           primary_group: "group2",
           additional_groups: ["group3"],
           shell: "/bin/bash",
+          home_dir: "/home/user2",
         },
       },
       passwords: {
