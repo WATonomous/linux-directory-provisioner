@@ -1,3 +1,4 @@
+import path from 'path'
 import { readFile, readdir, access } from 'node:fs/promises';
 import { $ } from 'zx';
 
@@ -98,7 +99,8 @@ export function parseConfig(config) {
   const configGroups = Object.fromEntries(config.groups.map((g) => [g.groupname, g]));
   const configUpdatePassword = Object.fromEntries(config.users.map((u) => [u.username, u.update_password]));
   const configPasswords = Object.fromEntries(config.users.map((u) => [u.username, u.password]));
-  const configSSHKeys = Object.fromEntries(config.users.map((u) => [u.username, u.ssh_authorized_keys]));
+  const configSSHAuthorizedKeys = Object.fromEntries(config.users.map((u) => [u.username, u.ssh_authorized_keys]));
+  const configSSHAuthorizedKeysPath = Object.fromEntries(config.users.map((u) => [u.username, u.ssh_authorized_keys_path ?? path.join(u.home_dir, ".ssh", "authorized_keys").replace(/%u/g, u.username).replace(/%U/g, u.uid)]));
   const configLinger = Object.fromEntries(config.users.map((u) => [u.username, u.linger]));
   const configManagedDirectoriesPerUser = Object.fromEntries(config.users.map((u) => [u.username, config.managed_user_directories.map(d => d.replace(/%u/g, u.username).replace(/%U/g, u.uid))]));
   // Object of the form { <path>: { <uid>: { ...quotaConfig } } }
@@ -149,7 +151,8 @@ export function parseConfig(config) {
     configGroups,
     configUsers,
     configPasswords,
-    configSSHKeys,
+    configSSHAuthorizedKeys,
+    configSSHAuthorizedKeysPath,
     configUpdatePassword,
     configLinger,
     configUserDiskQuota,
@@ -303,13 +306,11 @@ export function diffProperties(obj1, obj2) {
   return out;
 }
 
-export async function getSSHKeys(users, baseDir) {
+export async function getSSHAuthorizedKeys(usernameToSSHAuthorizedKeysPath) {
   const sshKeyFiles = await Promise.all(
-    users.map(async (u) => {
-      const expandedBaseDir = baseDir.replaceAll('%u', u.username).replaceAll('%U', u.uid);
-      const authorizedKeysPath = `${expandedBaseDir}/authorized_keys`;
+    Object.entries(usernameToSSHAuthorizedKeysPath).map(async ([username, authorizedKeysPath]) => {
       const authorizedKeys = await readFile(authorizedKeysPath, { encoding: 'utf8' }).catch((_e) => '');
-      return [u.username, authorizedKeys.split('\n').filter((l) => l)];
+      return [username, authorizedKeys.split('\n').filter((l) => l && !l.startsWith("#"))];
     }),
   );
 

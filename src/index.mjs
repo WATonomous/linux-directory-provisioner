@@ -2,7 +2,6 @@
 
 import './patch.mjs';
 
-import path from "path";
 import { $, stdin, argv, question } from "zx";
 import { readFile } from "node:fs/promises";
 import {
@@ -11,7 +10,7 @@ import {
   parseConfig,
   diffProperties,
   deepEqual,
-  getSSHKeys,
+  getSSHAuthorizedKeys,
   getDiskQuota,
   unique,
   objectMap,
@@ -65,7 +64,8 @@ const {
   configGroups,
   configUsers,
   configPasswords,
-  configSSHKeys,
+  configSSHAuthorizedKeys,
+  configSSHAuthorizedKeysPath,
   configUpdatePassword,
   configLinger,
   configUserDiskQuota,
@@ -95,10 +95,10 @@ if (usersWithoutPasswords.length > 0) {
   console.warn("WARNING: found users without passwords. This allows impersonation without sudo.", usersWithoutPasswords);
 }
 
-console.log("Loading existing SSH keys");
-console.time("getSSHKeys");
-const sshKeys = await getSSHKeys(Object.values(users), config.user_ssh_key_base_dir);
-console.timeLog("getSSHKeys");
+console.log("Loading existing SSH authorized keys");
+console.time("getSSHAuthorizedKeys");
+const sshAuthorizedKeys = await getSSHAuthorizedKeys(configSSHAuthorizedKeysPath);
+console.timeLog("getSSHAuthorizedKeys");
 
 const diskQuotaPaths = unique([...config.xfs_default_user_quota.map(q => q.path), ...Object.keys(configUserDiskQuota)]);
 console.log(`Loading disk quota for the following path(s): ${diskQuotaPaths.join(", ")}`);
@@ -197,7 +197,7 @@ const usermodArgs = userPropertyDiff.map(([u, diff]) => {
 const requirePasswordUpdate = Object.keys(configPasswords).filter(
   (u) => configPasswords[u] !== passwords[u] && (newUsers.includes(u) || configUpdatePassword[u] === "always")
 );
-const requireSSHKeyUpdate = Object.keys(configSSHKeys).filter((u) => newUsers.includes(u) || !deepEqual(sshKeys[u], configSSHKeys[u]));
+const requireSSHAuthorizedKeysUpdate = Object.keys(configSSHAuthorizedKeys).filter((u) => !deepEqual(sshAuthorizedKeys[u], configSSHAuthorizedKeys[u]));
 const requireLingerUpdate = Object.keys(configLinger).filter((u) => newUsers.includes(u) || lingerStates[u] !== configLinger[u]);
 const requireManagedUserDirCreate = Object.keys(configManagedDirectoriesPerUser).filter((u) => configManagedDirectoriesPerUser[u].length > 0 && !deepEqual(configManagedDirectoriesPerUser[u], managedDirectoriesPerUser[u]));
 
@@ -242,8 +242,8 @@ console.log("newUsers", newUsers);
 
 console.log("groupModArgs", groupModArgs);
 console.log("usermodArgs", usermodArgs);
-console.log("requiresSSHKeyUpdate", requireSSHKeyUpdate);
-console.log("requiresPasswordUpdate", requirePasswordUpdate);
+console.log("requireSSHAuthorizedKeysUpdate", requireSSHAuthorizedKeysUpdate);
+console.log("requirePasswordUpdate", requirePasswordUpdate);
 console.log("requireLingerUpdate", requireLingerUpdate);
 console.log("requireManagedUserDirCreate", requireManagedUserDirCreate);
 
@@ -276,11 +276,9 @@ for (const u of usersToDelete) {
 }
 // delete SSH keys
 await Promise.all(
-  usersToDelete.map(async (u) => {
-    const username = u;
-    const {uid} = users[username];
-    const expandedBaseDir = config.user_ssh_key_base_dir.replaceAll("%u", username).replaceAll("%U", uid);
-    await $`rm -rf ${expandedBaseDir}`;
+  usersToDelete.map(async (username) => {
+    const sshAuthorizedKeysPath = configSSHAuthorizedKeysPath[username];
+    await $`rm -rf ${sshAuthorizedKeysPath}`;
   })
 );
 // delete managed dirs
@@ -327,14 +325,12 @@ for (const u of newUsers) {
     configGroups[configUsers[u].primary_group].gid,
     "--shell",
     configUsers[u].shell,
+    "--home",
+    configUsers[u].home_dir.replaceAll("%u", u).replaceAll("%U", configUsers[u].uid),
   ];
 
   if (configUsers[u].additional_groups.length > 0) {
     args.push("--groups", configUsers[u].additional_groups.join(","));
-  }
-
-  if (configUsers[u].home_dir) {
-    args.push("--home", configUsers[u].home_dir.replaceAll("%u", u).replaceAll("%U", configUsers[u].uid));
   }
 
   await $`useradd ${args} ${u}`;
@@ -359,36 +355,30 @@ if (requirePasswordUpdate.length > 0) {
 }
 console.timeLog("chpasswd")
 
-console.log(`Updating SSH keys for ${requireSSHKeyUpdate.length} users...`);
-console.time("sshkeys")
-// sshKeyCommonDir is the part of the path that is the same for all users
-const sshKeyCommonDir = config.user_ssh_key_base_dir.substring(0, config.user_ssh_key_base_dir.indexOf("%"));
+console.log(`Creating managed user directories for ${requireManagedUserDirCreate.length} user(s)...`);
+console.time("manageduserdirs")
+for (const username of requireManagedUserDirCreate) {
+  for (const dir of configManagedDirectoriesPerUser[username]) {
+    await $`mkdir -p -m u=rwx,g=rx,o=rx ${dir}`;
+    await $`chmod 700 ${dir}`;
+    await $`chown ${configUsers[username].uid}:${configUsers[username].primary_group} ${dir}`;
+  }
+}
+console.timeLog("manageduserdirs")
+
+console.log(`Updating SSH authorized keys for ${requireSSHAuthorizedKeysUpdate.length} users...`);
+console.time("sshauthorizedkeys")
 await Promise.all(
-  requireSSHKeyUpdate.map(async (username) => {
-    const expandedBaseDir = config.user_ssh_key_base_dir.replaceAll("%u", username).replaceAll("%U", configUsers[username].uid);
-    // userDir is the first directory in the path that is different for each user
-    const userDir = path.relative(sshKeyCommonDir, expandedBaseDir).split(path.sep)[0];
+  requireSSHAuthorizedKeysUpdate.map(async (username) => {
 
-    const authorizedKeysPath = `${expandedBaseDir}/authorized_keys`;
-    await $`mkdir -p ${expandedBaseDir}`;
-    await $`touch ${authorizedKeysPath}`;
-
-    // Set the group ownership of everything in the user directory to the user's primary group
-    if (config.use_strict_ssh_key_dir_permissions) {
-      await $`chown -R :${configUsers[username].primary_group} ${path.join(sshKeyCommonDir, userDir)}`;
-    }
+    const keysPath = configSSHAuthorizedKeysPath[username];
 
     // Write the SSH keys
-    await $`echo ${configSSHKeys[username].join("\n")} > ${authorizedKeysPath}`;
+    await $`echo "# This file is managed by the Linux Directory Provisioner. Please do not modify it manually." > ${keysPath}`;
+    await $`echo ${configSSHAuthorizedKeys[username].join("\n")} >> ${keysPath}`;
   })
 );
-if (config.use_strict_ssh_key_dir_permissions) {
-  // Set the proper permissions on the directory
-  await $`chown -R $(id -u) ${sshKeyCommonDir}`; // Set the owner to the provisioning user (usually root), leave the group as-is
-  await $`chmod 755 ${sshKeyCommonDir}`; // all users can read and execute the directory
-  await $`chmod -R 750 ${sshKeyCommonDir}/*`; // only the group can read and execute
-}
-console.timeLog("sshkeys")
+console.timeLog("sshauthorizedkeys")
 
 if (await isLingerSupported()) {
   console.log(`Updating linger state for ${requireLingerUpdate.length} users...`);
@@ -415,14 +405,3 @@ for (const [p, quotas] of Object.entries(diskQuotaChanges)) {
   pipe.stdin.end();
 }
 console.timeLog("diskquota")
-
-console.log(`Creating managed user directories for ${requireManagedUserDirCreate.length} user(s)...`);
-console.time("manageduserdirs")
-for (const username of requireManagedUserDirCreate) {
-  for (const dir of configManagedDirectoriesPerUser[username]) {
-    await $`mkdir -p -m u=rwx,g=rx,o=rx ${dir}`;
-    await $`chmod 700 ${dir}`;
-    await $`chown ${configUsers[username].uid}:${configUsers[username].primary_group} ${dir}`;
-  }
-}
-console.timeLog("manageduserdirs")
