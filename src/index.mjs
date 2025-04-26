@@ -272,7 +272,7 @@ console.log(`Deleting ${usersToDelete.length} users...`);
 console.time("userdel")
 // delete users
 for (const u of usersToDelete) {
-  await $`userdel --remove ${u}`;
+  await $`userdel ${u}`;
 }
 // delete SSH keys
 await Promise.all(
@@ -321,7 +321,6 @@ console.log(`Creating ${newUsers.length} users...`);
 console.time("useradd")
 for (const u of newUsers) {
   const args = [
-    "--create-home",
     "--uid",
     configUsers[u].uid,
     "--gid",
@@ -332,6 +331,10 @@ for (const u of newUsers) {
 
   if (configUsers[u].additional_groups.length > 0) {
     args.push("--groups", configUsers[u].additional_groups.join(","));
+  }
+
+  if (configUsers[u].home_dir) {
+    args.push("--home", configUsers[u].home_dir.replaceAll("%u", u).replaceAll("%U", configUsers[u].uid));
   }
 
   await $`useradd ${args} ${u}`;

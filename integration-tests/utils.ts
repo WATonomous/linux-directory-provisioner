@@ -7,6 +7,12 @@ export async function ensurePermissions(container: StartedTestContainer, path: s
     expect(stdout.trim()).toBe(expected);
 }
 
+export async function ensureExists(container: StartedTestContainer, path: string) {
+    const { stderr, exitCode } = await container.exec(["stat", path]);
+    expect(exitCode).toBe(0);
+    expect(stderr.trim()).toBe("");
+}
+
 export async function ensureNotExists(container: StartedTestContainer, path: string) {
     const { stderr, exitCode } = await container.exec(["stat", path]);
     expect(exitCode).toBe(1);

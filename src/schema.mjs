@@ -46,6 +46,7 @@ const userSchema = {
     password: { type: "string" },
     update_password: { enum: ["always", "on_create"] },
     uid: { type: "number" },
+    home_dir: { type: "string", description: "Home directory for the user. Supports templating with %u (username) and %U (uid). If not specified, the default will be the system default (e.g. `/home/%u` on most Linux distributions)" },
     primary_group: { type: "string" },
     additional_groups: {
       type: "array",
