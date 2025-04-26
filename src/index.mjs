@@ -337,8 +337,6 @@ await Promise.all(
 )
 console.timeLog("useradd")
 
-
-
 console.log(`Updating user properties for ${usermodArgs.length} users...`);
 console.time("usermod")
 for (const args of usermodArgs) {
