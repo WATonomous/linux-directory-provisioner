@@ -74,7 +74,7 @@ const {
 console.timeLog("parseConfig");
 
 // =====================================================
-// Load existing directory
+// MARK: Load existing directory
 // =====================================================
 
 console.log("Loading existing directory...");
@@ -107,7 +107,7 @@ const diskQuota = await getDiskQuota(diskQuotaPaths);
 console.timeLog("getDiskQuota");
 
 // =====================================================
-// Calculate changes
+// MARK: Calculate changes
 // =====================================================
 
 console.log("Calculating changes");
@@ -234,7 +234,7 @@ const diskQuotaChanges = Object.fromEntries(
 )
 console.timeLog("calculateChanges");
 
-// Print changes
+// MARK: Print changes
 console.log("usersToDelete", usersToDelete);
 console.log("groupsToDelete", groupsToDelete);
 console.log("newGroups", newGroups);
@@ -253,6 +253,7 @@ console.log("Disk quota changes",
   )
 );
 
+// MARK: Dry run
 if (argv["dry-run"]) {
   console.log("Dry run. exiting");
   process.exit(0);
@@ -267,33 +268,46 @@ if (argv.confirm !== false) {
   }
 }
 
-// Apply changes
+// =====================================================
+// MARK: Apply changes
+// =====================================================
+
+// MARK: Delete users
+
+// delete SSH keys
+console.log(`Deleting SSH keys for ${usersToDelete.length} users...`);
+console.time("deleteSSHKeys");
+await Promise.all(
+  usersToDelete.map(async (username) => {
+    const sshAuthorizedKeysPath = configSSHAuthorizedKeysPath[username];
+    await $`rm -f ${sshAuthorizedKeysPath}`;
+  })
+);
+console.timeLog("deleteSSHKeys");
+
+// delete managed dirs
+console.log(`Deleting managed user directories for ${usersToDelete.length} users...`);
+console.time("deleteManagedDirs");
+await Promise.all(
+  usersToDelete.map(async (u) => Promise.all(
+    config.managed_user_directories.map(async (d) => {
+      const formatdir = d.replace("%u", users[u].username).replace("%U", users[u].uid);
+      await $`rm -rf ${formatdir}`;
+    })
+  )
+  )
+)
+console.timeLog("deleteManagedDirs");
+
 console.log(`Deleting ${usersToDelete.length} users...`);
 console.time("userdel")
 // delete users
 for (const u of usersToDelete) {
   await $`userdel ${u}`;
 }
-// delete SSH keys
-await Promise.all(
-  usersToDelete.map(async (username) => {
-    const sshAuthorizedKeysPath = configSSHAuthorizedKeysPath[username];
-    await $`rm -rf ${sshAuthorizedKeysPath}`;
-  })
-);
-// delete managed dirs
-await Promise.all(
-  usersToDelete.map(async (u) => Promise.all(
-      config.managed_user_directories.map(async (d) => {
-        const formatdir = d.replace("%u", users[u].username).replace("%U", users[u].uid);
-        await $`rm -rf ${formatdir}`;
-      })
-    )
-  )
-)
-
 console.timeLog("userdel")
 
+// MARK: Delete groups
 console.log(`Deleting ${groupsToDelete.length} groups...`);
 console.time("groupdel")
 for (const g of groupsToDelete) {
@@ -301,6 +315,7 @@ for (const g of groupsToDelete) {
 }
 console.timeLog("groupdel")
 
+// MARK: Create groups
 console.log(`Creating ${newGroups.length} groups...`);
 console.time("groupadd")
 for (const g of newGroups) {
@@ -308,6 +323,7 @@ for (const g of newGroups) {
 }
 console.timeLog("groupadd")
 
+// MARK: Update groups
 console.log(`Updating group properties for ${groupModArgs.length} groups...`);
 console.time("groupmod")
 for (const args of groupModArgs) {
@@ -315,6 +331,7 @@ for (const args of groupModArgs) {
 }
 console.timeLog("groupmod")
 
+// MARK: Create users
 console.log(`Creating ${newUsers.length} users...`);
 console.time("useradd")
 for (const u of newUsers) {
@@ -337,6 +354,7 @@ for (const u of newUsers) {
 }
 console.timeLog("useradd")
 
+// MARK: Update users
 console.log(`Updating user properties for ${usermodArgs.length} users...`);
 console.time("usermod")
 for (const args of usermodArgs) {
@@ -344,6 +362,7 @@ for (const args of usermodArgs) {
 }
 console.timeLog("usermod")
 
+// MARK: Update passwords
 console.log(`Updating passwords for ${requirePasswordUpdate.length} users...`);
 console.time("chpasswd")
 if (requirePasswordUpdate.length > 0) {
@@ -355,6 +374,7 @@ if (requirePasswordUpdate.length > 0) {
 }
 console.timeLog("chpasswd")
 
+// MARK: Create managed user directories
 console.log(`Creating managed user directories for ${requireManagedUserDirCreate.length} user(s)...`);
 console.time("manageduserdirs")
 for (const username of requireManagedUserDirCreate) {
@@ -366,6 +386,7 @@ for (const username of requireManagedUserDirCreate) {
 }
 console.timeLog("manageduserdirs")
 
+// MARK: Update SSH authorized keys
 console.log(`Updating SSH authorized keys for ${requireSSHAuthorizedKeysUpdate.length} users...`);
 console.time("sshauthorizedkeys")
 await Promise.all(
@@ -382,6 +403,7 @@ await Promise.all(
 );
 console.timeLog("sshauthorizedkeys")
 
+// MARK: Update linger state
 if (await isLingerSupported()) {
   console.log(`Updating linger state for ${requireLingerUpdate.length} users...`);
   console.time("linger")
@@ -397,6 +419,7 @@ if (await isLingerSupported()) {
   console.log("Linger is not supported on this system. Skipping linger updates.")
 }
 
+// MARK: Update disk quotas
 console.log(`Updating disk quotas for ${Object.keys(diskQuotaChanges).length} path(s)...`);
 console.time("diskquota")
 for (const [p, quotas] of Object.entries(diskQuotaChanges)) {
