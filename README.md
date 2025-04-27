@@ -11,7 +11,7 @@ Tool to provision Linux users and groups. Useful for provisioning a large number
 1. Prepare a configuration file in the format specified in [src/schema.mjs](./src/schema.mjs).
 2. Run the following command to run the provisioner:
 ```bash
-npx @watonomous/linux-directory-provisioner@^0.0.4-alpha --config=path_to_config.json
+npx @watonomous/linux-directory-provisioner@^0.0.5 --config=path_to_config.json
 ```
 
 ## Publishing to NPM
