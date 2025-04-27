@@ -302,16 +302,16 @@ console.timeLog("deleteManagedDirs");
 console.log(`Deleting ${usersToDelete.length} users...`);
 console.time("userdel")
 // delete users
-for (const u of usersToDelete) {
-  await $`userdel ${u}`;
+for (const username of usersToDelete) {
+  await $`userdel ${username}`;
 }
 console.timeLog("userdel")
 
 // MARK: Delete groups
 console.log(`Deleting ${groupsToDelete.length} groups...`);
 console.time("groupdel")
-for (const g of groupsToDelete) {
-  await $`groupdel ${g}`;
+for (const groupname of groupsToDelete) {
+  await $`groupdel ${groupname}`;
 }
 console.timeLog("groupdel")
 
