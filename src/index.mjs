@@ -280,7 +280,7 @@ console.time("deleteSSHKeys");
 await Promise.all(
   usersToDelete.map(async (username) => {
     const sshAuthorizedKeysPath = configSSHAuthorizedKeysPath[username];
-    await $`rm -f ${sshAuthorizedKeysPath}`;
+    await $`rm -rf ${sshAuthorizedKeysPath}`;
   })
 );
 console.timeLog("deleteSSHKeys");
