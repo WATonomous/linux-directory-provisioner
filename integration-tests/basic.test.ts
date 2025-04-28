@@ -212,6 +212,36 @@ describe("Basic", () => {
         }
     }, 60000);
 
+    test("should delete SSH keys whenn deleting users", async () => {
+        basicConfig.ssh_authorized_keys_path = "/tmp/ssh-keys-%u-%U-authorized_keys";
+        basicConfig.users[0].ssh_authorized_keys = [
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDwLVH+sBKaWb09IfaGkyqF9LEds6UN6grSQTieVD0ZW",
+        ];
+        await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
+        
+        // Create users and groups
+        {
+            const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--no-confirm", "--config", "/app/config.json"]);
+            expect(exitCode).toBe(0);
+        }
+
+        // Check that the appropriate keys exist
+        await ensureExists(container, "/tmp/ssh-keys-user1-1001-authorized_keys");
+        await ensureNotExists(container, "/tmp/ssh-keys-user2-1002-authorized_keys");
+
+        // Delete users and groups
+        basicConfig.users = [];
+        await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
+        {
+            const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--no-confirm", "--config", "/app/config.json"]);
+            expect(exitCode).toBe(0);
+        }
+
+        // Check that the appropriate keys no longer exist
+        await ensureNotExists(container, "/tmp/ssh-keys-user1-1001-authorized_keys");
+        await ensureNotExists(container, "/tmp/ssh-keys-user2-1002-authorized_keys");
+    })
+
     test("should throw an error if the parent directory of the ssh key location does not exist", async () => {
         basicConfig.ssh_authorized_keys_path = "/tmp/ssh-keys/%u/%U/.ssh/authorized_keys";
         basicConfig.users[0].ssh_authorized_keys = [
