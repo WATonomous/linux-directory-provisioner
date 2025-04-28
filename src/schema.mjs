@@ -46,11 +46,6 @@ const userSchema = {
     password: { type: "string" },
     update_password: { enum: ["always", "on_create"] },
     uid: { type: "number" },
-    home_dir: { 
-      type: "string",
-      default: "/home/%u",
-      description: "Home directory for the user. Supports templating with %u (username) and %U (uid). Defaults to `/home/%u`."
-    },
     primary_group: { type: "string" },
     additional_groups: {
       type: "array",
@@ -60,10 +55,6 @@ const userSchema = {
     },
     shell: { type: "string", default: "/bin/bash" },
     ssh_authorized_keys: { type: "array", items: { type: "string" }, default: [] },
-    ssh_authorized_keys_path: {
-      type: "string",
-      description: "Path to the SSH authorized keys file. Supports templating with %u (username) and %U (uid). Defaults to `<home_dir>/.ssh/authorized_keys` where `<home_dir>` is the value of the `home_dir` property."
-    },
     linger: { type: "boolean", default: false },
     disk_quota: {
       type: "array",
@@ -112,10 +103,14 @@ export const configSchema = {
       items: { type: "string" },
       default: [],
     },
-    use_strict_ssh_key_dir_permissions: {
-      type: "boolean",
-      description: "If true, the provisioner will manage the SSH key directory permissions such that the user can read/execute the directory, but not write to the directory.",
-      default: false,
+    home_dir: { 
+      type: "string",
+      default: "/home/%u",
+      description: "Home directory for users. Supports templating with %u (username) and %U (uid). Defaults to `/home/%u`."
+    },
+    ssh_authorized_keys_path: {
+      type: "string",
+      description: "Path to the SSH authorized keys file. Supports templating with %u (username) and %U (uid). Defaults to `<home_dir>/.ssh/authorized_keys` where `<home_dir>` is the value of the `home_dir` property."
     },
     // XFS default quota can be set using `sudo xfs_quota <path> -x -c "limit -d bsoft=<bsoft> bhard=<bhard> isoft=<isoft> ihard=<ihard>"`
     xfs_default_user_quota: {

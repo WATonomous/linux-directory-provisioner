@@ -79,10 +79,17 @@ describe("diffProperties", () => {
 describe("getSSHAuthorizedKeys", () => {
   // Test case: Getting SSH keys for multiple users
   test("should return SSH keys for multiple users", async () => {
-    const usernameToSSHAuthorizedKeysPath = {
-      "user1": "/home/user1/.ssh/authorized_keys",
-      "user2": "/home/user2/.ssh/authorized_keys"
+    const configUsers = {
+      "user1": {
+        username: "user1",
+        uid: 1001,
+      },
+      "user2": {
+        username: "user2",
+        uid: 1002,
+      }
     }
+    const sshAuthorizedKeysPathTemplate = "/tmp/test/%u/%U/.ssh/authorized_keys";
     const expectedKeys = {
       user1: ["ssh_key1", "ssh_key2"],
       user2: ["ssh_key3", "ssh_key4"],
@@ -90,15 +97,15 @@ describe("getSSHAuthorizedKeys", () => {
 
     // Mock the readFile function
     jest.spyOn(fsPromises, "readFile").mockImplementation((path) => {
-      if (path === "/home/user1/.ssh/authorized_keys") {
+      if (path === "/tmp/test/user1/1001/.ssh/authorized_keys") {
         return Promise.resolve("# some comment\nssh_key1\nssh_key2\n");
       }
-      if (path === "/home/user2/.ssh/authorized_keys") {
+      if (path === "/tmp/test/user2/1002/.ssh/authorized_keys") {
         return Promise.resolve("ssh_key3\n# some comment\nssh_key4\n");
       }
     });
 
-    const result = await getSSHAuthorizedKeys(usernameToSSHAuthorizedKeysPath);
+    const result = await getSSHAuthorizedKeys(configUsers, sshAuthorizedKeysPathTemplate);
     expect(result).toEqual(expectedKeys);
   });
 });

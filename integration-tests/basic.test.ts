@@ -113,8 +113,7 @@ describe("Basic", () => {
     }, 60000);
 
     test("should not create home directories by default", async () => {
-        basicConfig.users[0].home_dir = "/tmp/myhome/%u/%U";
-        basicConfig.users[1].home_dir = "/tmp/myhome/%u/%U";
+        basicConfig.home_dir = "/tmp/myhome/%u/%U";
         await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
 
         // Create users and groups
@@ -128,9 +127,7 @@ describe("Basic", () => {
     }, 60000);
 
     test("should support custom home directories", async () => {
-        basicConfig.users[0].home_dir = "/tmp/myhome/%u/%U";
-        basicConfig.users[1].home_dir = "/tmp/myhome/%u/%U";
-
+        basicConfig.home_dir = "/tmp/myhome/%u/%U";
         await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
 
         // Create users and groups
@@ -149,8 +146,7 @@ describe("Basic", () => {
     }, 60000);
 
     test("should not delete home directories by default", async () => {
-        basicConfig.users[0].home_dir = "/tmp/myhome/%u/%U";
-        basicConfig.users[1].home_dir = "/tmp/myhome/%u/%U";
+        basicConfig.home_dir = "/tmp/myhome/%u/%U";
         await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
 
         // Create users and groups
@@ -217,7 +213,7 @@ describe("Basic", () => {
     }, 60000);
 
     test("should throw an error if the parent directory of the ssh key location does not exist", async () => {
-        basicConfig.users[0].ssh_authorized_keys_path = "/tmp/ssh-keys/%u/%U/.ssh/authorized_keys";
+        basicConfig.ssh_authorized_keys_path = "/tmp/ssh-keys/%u/%U/.ssh/authorized_keys";
         basicConfig.users[0].ssh_authorized_keys = [
             "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDwLVH+sBKaWb09IfaGkyqF9LEds6UN6grSQTieVD0ZW",
         ];
@@ -286,7 +282,7 @@ describe("Basic", () => {
             "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDwLVH+sBKaWb09IfaGkyqF9LEds6UN6grSQTieVD0ZW",
             "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDwLVH+sBKaWb09IfaGkyqF9LEds6UN6grSQTieVD0ZW",
         ];
-        basicConfig.users[0].ssh_authorized_keys_path = "/tmp/ssh-keys/%u/%U/.ssh/authorized_keys";
+        basicConfig.ssh_authorized_keys_path = "/tmp/ssh-keys/%u/%U/.ssh/authorized_keys";
 
         basicConfig.managed_user_directories = [
             "/tmp/ssh-keys/%u/%U/.ssh",
