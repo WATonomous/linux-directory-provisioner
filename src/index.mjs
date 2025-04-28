@@ -284,7 +284,7 @@ await Promise.all(
     if (sshAuthorizedKeysPath !== undefined) {
       await $`rm -f ${sshAuthorizedKeysPath}`;
     } else {
-      console.warn(`No sshAuthorizedKeysPath for user: ${username}`);
+      console.warn(`WARNING: No sshAuthorizedKeysPath for user: ${username}`);
     }
   })
 );
@@ -300,7 +300,7 @@ await Promise.all(
         if (existsSync(formatdir)) {
           await $`rm -rf ${formatdir}`;
         } else {
-          console.warn(`Directory doesn't exist for user ${u}: ${formatdir}`);
+          console.warn(`WARNING: Directory doesn't exist for user ${u}: ${formatdir}`);
         }
       })
     )
