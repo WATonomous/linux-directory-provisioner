@@ -3,7 +3,6 @@
 import './patch.mjs';
 
 import { $, stdin, argv, question } from "zx";
-import { existsSync } from "fs";
 import { readFile } from "node:fs/promises";
 import {
   isLingerSupported,
@@ -17,6 +16,7 @@ import {
   objectMap,
   makeQuotaConfig,
   QUOTA_BLOCK_SIZE,
+  doesPathExist
 } from "./utils.mjs";
 import { validateConfig } from "./schema.mjs";
 
@@ -280,6 +280,7 @@ console.log(`Deleting SSH keys for ${usersToDelete.length} users...`);
 console.time("deleteSSHKeys");
 await Promise.all(
   usersToDelete.map(async (username) => {
+    // TODO: use SSH keys path from config instead of per-user
     const sshAuthorizedKeysPath = configSSHAuthorizedKeysPath[username];
     if (sshAuthorizedKeysPath !== undefined) {
       await $`rm -f ${sshAuthorizedKeysPath}`;
@@ -297,7 +298,7 @@ await Promise.all(
     usersToDelete.map(async (u) => Promise.all(
       config.managed_user_directories.map(async (d) => {
         const formatdir = d.replace("%u", users[u].username).replace("%U", users[u].uid);
-        if (existsSync(formatdir)) {
+        if (doesPathExist(formatdir)) {
           await $`rm -rf ${formatdir}`;
         } else {
           console.warn(`WARNING: Directory doesn't exist for user ${u}: ${formatdir}`);
