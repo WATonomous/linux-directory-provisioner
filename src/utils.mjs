@@ -1,4 +1,3 @@
-import path from 'path'
 import { readFile, readdir, access } from 'node:fs/promises';
 import { $ } from 'zx';
 
@@ -149,7 +148,7 @@ export function parseConfig(config) {
     return out;
   }, {});
 
-  const configSSHAuthorizedKeysPathTemplate = config.ssh_authorized_keys_path ?? config.home_dir + "/.ssh/authorized_keys";
+  const configSSHAuthorizedKeysPathTemplate = config.ssh_authorized_keys_path ?? `${config.home_dir}/.ssh/authorized_keys`;
 
   return {
     configGroups,
