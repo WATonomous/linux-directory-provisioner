@@ -212,7 +212,7 @@ describe("Basic", () => {
         }
     }, 60000);
 
-    test("should delete SSH keys whenn deleting users", async () => {
+    test("should delete SSH keys when deleting users", async () => {
         basicConfig.ssh_authorized_keys_path = "/tmp/ssh-keys-%u-%U-authorized_keys";
         basicConfig.users[0].ssh_authorized_keys = [
             "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDwLVH+sBKaWb09IfaGkyqF9LEds6UN6grSQTieVD0ZW",
