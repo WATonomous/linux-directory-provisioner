@@ -3,6 +3,7 @@
 import './patch.mjs';
 
 import { $, stdin, argv, question } from "zx";
+import { existsSync } from "fs";
 import { readFile } from "node:fs/promises";
 import {
   isLingerSupported,
@@ -280,7 +281,11 @@ console.time("deleteSSHKeys");
 await Promise.all(
   usersToDelete.map(async (username) => {
     const sshAuthorizedKeysPath = configSSHAuthorizedKeysPath[username];
-    await $`rm -f ${sshAuthorizedKeysPath}`;
+    if (sshAuthorizedKeysPath !== undefined) {
+      await $`rm -f ${sshAuthorizedKeysPath}`;
+    } else {
+      console.warn(`No sshAuthorizedKeysPath for user: ${username}`);
+    }
   })
 );
 console.timeLog("deleteSSHKeys");
@@ -289,12 +294,16 @@ console.timeLog("deleteSSHKeys");
 console.log(`Deleting managed user directories for ${usersToDelete.length} users...`);
 console.time("deleteManagedDirs");
 await Promise.all(
-  usersToDelete.map(async (u) => Promise.all(
-    config.managed_user_directories.map(async (d) => {
-      const formatdir = d.replace("%u", users[u].username).replace("%U", users[u].uid);
-      await $`rm -rf ${formatdir}`;
-    })
-  )
+    usersToDelete.map(async (u) => Promise.all(
+      config.managed_user_directories.map(async (d) => {
+        const formatdir = d.replace("%u", users[u].username).replace("%U", users[u].uid);
+        if (existsSync(formatdir)) {
+          await $`rm -rf ${formatdir}`;
+        } else {
+          console.warn(`Directory doesn't exist for user ${u}: ${formatdir}`);
+        }
+      })
+    )
   )
 )
 console.timeLog("deleteManagedDirs");
