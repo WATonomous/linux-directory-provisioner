@@ -163,7 +163,7 @@ export function parseConfig(config) {
   };
 }
 
-export async function doesDirectoryExist(dirPath) {
+export async function doesPathExist(dirPath) {
   try {
     await access(dirPath);
     return true;
@@ -176,7 +176,7 @@ export async function doesDirectoryExist(dirPath) {
 }
 
 export async function isLingerSupported() {
-  return doesDirectoryExist("/var/lib/systemd/linger");
+  return doesPathExist("/var/lib/systemd/linger");
 }
 
 export async function getExistingDirectory(config) {
@@ -251,11 +251,15 @@ export async function getExistingDirectory(config) {
 
   const lingerStates = Object.fromEntries(Object.keys(users).map((u) => [u, lingerUsernames.includes(u)]));
 
-  const managedDirectoriesPerUser = Object.fromEntries(await Promise.all(Object.keys(users).map(async (username) => {
-    const directories = config.managed_user_directories.map(d => d.replace(/%u/g, username).replace(/%U/g, users[username].uid));
-    const exists = await Promise.all(directories.map(doesDirectoryExist));
-    return [username, directories.filter((d, i) => exists[i])];
-  })));
+  const managedDirectoriesPerUser = Object.fromEntries(await Promise.all(
+    Object.keys(users).map(async (username) => {
+      const directories = config.managed_user_directories.map(
+        d => d.replace(/%u/g, username).replace(/%U/g, users[username].uid)
+      );
+      const exists = await Promise.all(directories.map(doesPathExist));
+      return [username, directories.filter((d, i) => exists[i])];
+    })
+  ));
 
   return { users, passwords, groups, lingerStates, managedDirectoriesPerUser };
 }

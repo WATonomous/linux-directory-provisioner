@@ -16,6 +16,7 @@ import {
   objectMap,
   makeQuotaConfig,
   QUOTA_BLOCK_SIZE,
+  doesPathExist
 } from "./utils.mjs";
 import { validateConfig } from "./schema.mjs";
 
@@ -280,7 +281,11 @@ console.time("deleteSSHKeys");
 await Promise.all(
   usersToDelete.map(async (username) => {
     const sshAuthorizedKeysPath = configSSHAuthorizedKeysPathTemplate.replace(/%u/g, username).replace(/%U/g, users[username].uid);
-    await $`rm -f ${sshAuthorizedKeysPath}`;
+    if (await doesPathExist(sshAuthorizedKeysPath)) {
+      await $`rm -f ${sshAuthorizedKeysPath}`;
+    } else {
+      console.warn(`WARNING: No sshAuthorizedKeysPath for user ${username}`);
+    }
   })
 );
 console.timeLog("deleteSSHKeys");
@@ -289,12 +294,16 @@ console.timeLog("deleteSSHKeys");
 console.log(`Deleting managed user directories for ${usersToDelete.length} users...`);
 console.time("deleteManagedDirs");
 await Promise.all(
-  usersToDelete.map(async (u) => Promise.all(
-    config.managed_user_directories.map(async (d) => {
-      const formatdir = d.replace("%u", users[u].username).replace("%U", users[u].uid);
-      await $`rm -rf ${formatdir}`;
-    })
-  )
+    usersToDelete.map(async (u) => Promise.all(
+      config.managed_user_directories.map(async (d) => {
+        const formatdir = d.replace("%u", users[u].username).replace("%U", users[u].uid);
+        if (await doesPathExist(formatdir)) {
+          await $`rm -rf ${formatdir}`;
+        } else {
+          console.warn(`WARNING: Directory doesn't exist for user ${u}: ${formatdir}`);
+        }
+      })
+    )
   )
 )
 console.timeLog("deleteManagedDirs");
