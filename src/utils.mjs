@@ -1,4 +1,3 @@
-import path from 'path'
 import { readFile, readdir, access } from 'node:fs/promises';
 import { $ } from 'zx';
 
@@ -100,7 +99,6 @@ export function parseConfig(config) {
   const configUpdatePassword = Object.fromEntries(config.users.map((u) => [u.username, u.update_password]));
   const configPasswords = Object.fromEntries(config.users.map((u) => [u.username, u.password]));
   const configSSHAuthorizedKeys = Object.fromEntries(config.users.map((u) => [u.username, u.ssh_authorized_keys]));
-  const configSSHAuthorizedKeysPath = Object.fromEntries(config.users.map((u) => [u.username, (u.ssh_authorized_keys_path ?? path.join(u.home_dir, ".ssh", "authorized_keys")).replace(/%u/g, u.username).replace(/%U/g, u.uid)]));
   const configLinger = Object.fromEntries(config.users.map((u) => [u.username, u.linger]));
   const configManagedDirectoriesPerUser = Object.fromEntries(config.users.map((u) => [u.username, config.managed_user_directories.map(d => d.replace(/%u/g, u.username).replace(/%U/g, u.uid))]));
   // Object of the form { <path>: { <uid>: { ...quotaConfig } } }
@@ -133,11 +131,9 @@ export function parseConfig(config) {
   const configUsers = config.users.reduce((out, u) => {
     const {
       additional_groups,
-      home_dir,
       password: _password,
       update_password: _update_password,
       ssh_authorized_keys: _ssh_authorized_keys,
-      ssh_authorized_keys_path: _ssh_authorized_keys_path,
       linger: _linger,
       disk_quota: _disk_quota,
       ...rest
@@ -146,22 +142,24 @@ export function parseConfig(config) {
     out[u.username] = {
       ...rest,
       additional_groups: additional_groups.sort(),
-      home_dir: home_dir.replace(/%u/g, u.username).replace(/%U/g, u.uid),
+      home_dir: config.home_dir.replace(/%u/g, u.username).replace(/%U/g, u.uid),
     };
 
     return out;
   }, {});
+
+  const configSSHAuthorizedKeysPathTemplate = config.ssh_authorized_keys_path ?? `${config.home_dir}/.ssh/authorized_keys`;
 
   return {
     configGroups,
     configUsers,
     configPasswords,
     configSSHAuthorizedKeys,
-    configSSHAuthorizedKeysPath,
     configUpdatePassword,
     configLinger,
     configUserDiskQuota,
     configManagedDirectoriesPerUser,
+    configSSHAuthorizedKeysPathTemplate,
   };
 }
 
@@ -317,7 +315,10 @@ export function diffProperties(obj1, obj2) {
   return out;
 }
 
-export async function getSSHAuthorizedKeys(usernameToSSHAuthorizedKeysPath) {
+export async function getSSHAuthorizedKeys(configUsers, sshAuthorizedKeysPathTemplate) {
+  const usernameToSSHAuthorizedKeysPath = Object.fromEntries(
+    Object.entries(configUsers).map(([username, user]) => [username, sshAuthorizedKeysPathTemplate.replace(/%u/g, username).replace(/%U/g, user.uid)])
+  );
   const sshKeyFiles = await Promise.all(
     Object.entries(usernameToSSHAuthorizedKeysPath).map(async ([username, authorizedKeysPath]) => {
       const authorizedKeys = await readFile(authorizedKeysPath, { encoding: 'utf8' }).catch((_e) => '');

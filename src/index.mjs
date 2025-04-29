@@ -66,11 +66,11 @@ const {
   configUsers,
   configPasswords,
   configSSHAuthorizedKeys,
-  configSSHAuthorizedKeysPath,
   configUpdatePassword,
   configLinger,
   configUserDiskQuota,
   configManagedDirectoriesPerUser,
+  configSSHAuthorizedKeysPathTemplate,
 } = parseConfig(config);
 console.timeLog("parseConfig");
 
@@ -98,7 +98,7 @@ if (usersWithoutPasswords.length > 0) {
 
 console.log("Loading existing SSH authorized keys");
 console.time("getSSHAuthorizedKeys");
-const sshAuthorizedKeys = await getSSHAuthorizedKeys(configSSHAuthorizedKeysPath);
+const sshAuthorizedKeys = await getSSHAuthorizedKeys(configUsers, configSSHAuthorizedKeysPathTemplate);
 console.timeLog("getSSHAuthorizedKeys");
 
 const diskQuotaPaths = unique([...config.xfs_default_user_quota.map(q => q.path), ...Object.keys(configUserDiskQuota)]);
@@ -280,8 +280,7 @@ console.log(`Deleting SSH keys for ${usersToDelete.length} users...`);
 console.time("deleteSSHKeys");
 await Promise.all(
   usersToDelete.map(async (username) => {
-    // TODO: use SSH keys path from config instead of per-user
-    const sshAuthorizedKeysPath = configSSHAuthorizedKeysPath[username];
+    const sshAuthorizedKeysPath = configSSHAuthorizedKeysPathTemplate.replace(/%u/g, username).replace(/%U/g, users[username].uid);
     if (sshAuthorizedKeysPath !== undefined) {
       await $`rm -f ${sshAuthorizedKeysPath}`;
     } else {
@@ -401,8 +400,7 @@ console.log(`Updating SSH authorized keys for ${requireSSHAuthorizedKeysUpdate.l
 console.time("sshauthorizedkeys")
 await Promise.all(
   requireSSHAuthorizedKeysUpdate.map(async (username) => {
-
-    const keysPath = configSSHAuthorizedKeysPath[username];
+    const keysPath = configSSHAuthorizedKeysPathTemplate.replace(/%u/g, username).replace(/%U/g, configUsers[username].uid);
 
     // Write the SSH keys
     await $`echo "# This file is managed by the Linux Directory Provisioner. Please do not modify it manually." > ${keysPath}`;
