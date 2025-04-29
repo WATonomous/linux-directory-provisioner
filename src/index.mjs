@@ -285,7 +285,7 @@ await Promise.all(
     if (sshAuthorizedKeysPath !== undefined) {
       await $`rm -f ${sshAuthorizedKeysPath}`;
     } else {
-      console.warn(`WARNING: No sshAuthorizedKeysPath for user: ${username}`);
+      console.warn(`WARNING: No sshAuthorizedKeysPath for user ${username}`);
     }
   })
 );
