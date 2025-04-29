@@ -404,6 +404,42 @@ describe("Basic", () => {
         }
 
         await ensureNotExists(container, "/test/user1/1001/.test");
+        await ensureExists(container, "/test/user2/1002/.test");
+    })
+
+    test("should warn us if managed directories are missing", async () => {
+        basicConfig.managed_user_directories = ["/test/%u/%U/.test"];
+        basicConfig.ssh_authorized_keys_path = "/tmp/ssh-keys-%u-%U-authorized_keys";
+        basicConfig.users[0].ssh_authorized_keys = [
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDwLVH+sBKaWb09IfaGkyqF9LEds6UN6grSQTieVD0ZW",
+        ];
+        await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
+
+        {
+            const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--no-confirm", "--config", "/app/config.json"]);
+            expect(exitCode).toBe(0);
+            expect(stdout).toContain("Creating managed user directories for 2 user(s)...");
+        }
+
+        // manually delete user1's sshAuthorizedKeysPath and managed dir(s)
+        await container.exec([
+            'rm', '-rf',
+            '/test/user1/1001/.test',
+            '/tmp/ssh-keys-user1-1001-authorized_keys'
+        ]);
+
+        basicConfig.users.splice(0, 1);
+        await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
+        {
+            const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--no-confirm", "--config", "/app/config.json"]);
+            expect(exitCode).toBe(0);
+            expect(stdout).toContain("Creating managed user directories for 0 user(s)...");
+            expect(stderr).toContain("WARNING: Directory doesn't exist for user user1: /test/user1/1001/.test");
+            expect(stderr).toContain("WARNING: No sshAuthorizedKeysPath for user user1");
+        }
+
+        await ensureNotExists(container, "/test/user1/1001/.test");
+        await ensureNotExists(container, "/tmp/ssh-keys-user1-1001-authorized_keys");
     })
 
     test("should handle existing managed user directories", async () => {

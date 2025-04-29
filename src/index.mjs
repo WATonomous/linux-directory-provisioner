@@ -281,7 +281,7 @@ console.time("deleteSSHKeys");
 await Promise.all(
   usersToDelete.map(async (username) => {
     const sshAuthorizedKeysPath = configSSHAuthorizedKeysPathTemplate.replace(/%u/g, username).replace(/%U/g, users[username].uid);
-    if (doesPathExist(sshAuthorizedKeysPath)) {
+    if (await doesPathExist(sshAuthorizedKeysPath)) {
       await $`rm -f ${sshAuthorizedKeysPath}`;
     } else {
       console.warn(`WARNING: No sshAuthorizedKeysPath for user ${username}`);
@@ -297,7 +297,7 @@ await Promise.all(
     usersToDelete.map(async (u) => Promise.all(
       config.managed_user_directories.map(async (d) => {
         const formatdir = d.replace("%u", users[u].username).replace("%U", users[u].uid);
-        if (doesPathExist(formatdir)) {
+        if (await doesPathExist(formatdir)) {
           await $`rm -rf ${formatdir}`;
         } else {
           console.warn(`WARNING: Directory doesn't exist for user ${u}: ${formatdir}`);
