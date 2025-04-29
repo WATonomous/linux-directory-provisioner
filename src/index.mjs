@@ -281,7 +281,7 @@ console.time("deleteSSHKeys");
 await Promise.all(
   usersToDelete.map(async (username) => {
     const sshAuthorizedKeysPath = configSSHAuthorizedKeysPathTemplate.replace(/%u/g, username).replace(/%U/g, users[username].uid);
-    if (sshAuthorizedKeysPath !== undefined) {
+    if (doesPathExist(sshAuthorizedKeysPath)) {
       await $`rm -f ${sshAuthorizedKeysPath}`;
     } else {
       console.warn(`WARNING: No sshAuthorizedKeysPath for user ${username}`);
