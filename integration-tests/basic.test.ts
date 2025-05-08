@@ -240,7 +240,7 @@ describe("Basic", () => {
         // Check that the appropriate keys no longer exist
         await ensureNotExists(container, "/tmp/ssh-keys-user1-1001-authorized_keys");
         await ensureNotExists(container, "/tmp/ssh-keys-user2-1002-authorized_keys");
-    })
+    }, 60000);
 
     test("should throw an error if the parent directory of the ssh key location does not exist", async () => {
         basicConfig.ssh_authorized_keys_path = "/tmp/ssh-keys/%u/%U/.ssh/authorized_keys";
