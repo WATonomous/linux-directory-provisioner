@@ -11,10 +11,16 @@ const statePath = `${stateDirectory}/storage.json`;
 // eslint-disable-next-line no-bitwise
 const directoryFlags = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
 
-async function openDirectory(path, create = false) {
-  let directory = await open("/", directoryFlags);
+function missingRoot(root) {
+  return new Error(`storage root missing: ${root} (is the disk mounted?)`);
+}
+
+async function openDirectory(path, root) {
+  // Open the root without creation, then anchor every mkdir below its descriptor.
+  let directory = root ? await openDirectory(root) : await open("/", directoryFlags);
+  if (!directory) throw missingRoot(root);
   try {
-    const components = path.slice(1).split("/").filter(Boolean);
+    const components = path.slice(root?.length ?? 0).split("/").filter(Boolean);
     for (const [index, component] of components.entries()) {
       // Anchor each lookup to the opened parent so a symlink swap cannot redirect it.
       const childPath = `/proc/self/fd/${directory.fd}/${component}`;
@@ -23,7 +29,7 @@ async function openDirectory(path, create = false) {
         child = await open(childPath, directoryFlags);
       } catch (error) {
         if (error.code !== "ENOENT") throw new Error(`Cannot open storage directory ${path}`, { cause: error });
-        if (!create) return null;
+        if (!root) return null;
         const isParent = index < components.length - 1;
         await mkdir(childPath, { mode: isParent ? 0o755 : 0o700 });
         child = await open(childPath, directoryFlags);
@@ -124,6 +130,11 @@ async function saveState(state, stateDir) {
 }
 
 async function planStorage(config, maxLocks) {
+  const roots = config.roots.map((root) => resolve(root)).sort((a, b) => b.length - a.length);
+  for (const root of roots) {
+    if (root === "/") throw new Error("Storage root cannot be /");
+    if (!await directoryStat(root)) throw missingRoot(root);
+  }
   const previous = await loadState();
   const desired = new Map();
   const groups = new Map();
@@ -153,6 +164,8 @@ async function planStorage(config, maxLocks) {
     if (path === stateDirectory || path.startsWith(`${stateDirectory}/`) || stateDirectory.startsWith(`${path}/`) || path === "/") {
       throw new Error(`Invalid storage directory: ${row.path}`);
     }
+    const root = roots.find((candidate) => path.startsWith(`${candidate}/`));
+    if (!root || roots.includes(path)) throw new Error(`Storage directory must be strictly under a storage root: ${row.path}`);
     if (desired.has(path)) throw new Error(`Duplicate storage directory: ${path}`);
     const mode = parseInt(row.mode, 8);
     desired.set(path, mode);
@@ -162,7 +175,7 @@ async function planStorage(config, maxLocks) {
     const stat = await directoryStat(path);
     // eslint-disable-next-line no-bitwise
     if (!stat || stat.uid !== uid || stat.gid !== gid || (stat.mode & 0o7777) !== mode) {
-      directories.push({ path, uid, gid, mode, create: !stat });
+      directories.push({ path, root, uid, gid, mode, create: !stat });
     }
   }
 
@@ -204,8 +217,8 @@ async function applyStorage({ previous, desired, newGroups, directories, locked 
   const state = new Map([...previous, ...desired]);
   if ([...desired].some(([path, mode]) => previous.get(path) !== mode)) await saveState(state, stateDir);
 
-  for (const { path, uid, gid, mode } of directories) {
-    const directory = await openDirectory(path, true);
+  for (const { path, root, uid, gid, mode } of directories) {
+    const directory = await openDirectory(path, root);
     try {
       const stat = await directory.stat();
       if (stat.uid !== uid || stat.gid !== gid) await directory.chown(uid, gid);

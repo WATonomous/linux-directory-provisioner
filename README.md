@@ -26,6 +26,7 @@ provision-directory --storage --no-confirm --config - < storage.json
 
 ```json
 {
+  "roots": ["/mnt/wato-drive2-export/users", "/mnt/wato-drive2-export/affiliations"],
   "groups": [{ "groupname": "robotics", "gid": 23001 }],
   "directories": [
     { "path": "/mnt/wato-drive2-export/users/alex", "owner": 21001, "group": 21001, "mode": "0700" },
@@ -34,8 +35,14 @@ provision-directory --storage --no-confirm --config - < storage.json
 }
 ```
 
-Use absolute, symlink-free paths with one row per folder. Missing parents are
-created as `0755 root:root`. Owners and groups can use numeric IDs or names that resolve
+List at least one existing directory in `roots`. Choose a directory on the data
+disk, such as `/mnt/wato-drive2-export/users`. The mount point itself can still
+exist when the disk is unmounted. A missing root stops both preview and apply
+before any changes.
+
+Use absolute, symlink-free paths with one row per folder. Each managed path must
+be strictly below a root. Missing parents below a root are created as
+`0755 root:root`. Owners and groups can use numeric IDs or names that resolve
 on the storage server. Numeric ownership can refer to users with no local
 account. Give each mode as a quoted string of three or four octal digits, such as
 `"750"` or `"0770"`. The optional

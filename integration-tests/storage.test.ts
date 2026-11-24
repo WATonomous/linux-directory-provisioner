@@ -27,6 +27,7 @@ test("provisions and locks storage directories without touching user accounts", 
         const personal = "/mnt/storage/users/private";
         const retained = "/mnt/storage/users/retained";
         const config = {
+            roots: ["/mnt/storage"],
             groups: [{ groupname: "storage-team", gid: 23145 }, { groupname: "root", gid: 0 }],
             directories: [
                 { path: team, owner: 21345, group: "storage-team", mode: "2775" },
@@ -65,6 +66,32 @@ test("provisions and locks storage directories without touching user accounts", 
         const accountsBefore = await container.exec(["cat", "/etc/passwd", "/etc/shadow"]);
         expect(accountsBefore.exitCode).toBe(0);
 
+        const diskRoot = "/mnt/storage/disk-data";
+        const missingDisk = {
+            ...config, roots: [...config.roots, diskRoot],
+            directories: [...config.directories, { ...config.directories[0], path: `${diskRoot}/nested/leaf` }],
+        };
+        for (const dryRun of [true, false]) {
+            const result = await invoke(dryRun, missingDisk);
+            expect(result.exitCode).toBe(1);
+            expect(result.stderr).toContain(`storage root missing: ${diskRoot} (is the disk mounted?)`);
+            await ensureNotExists(container, diskRoot);
+            await ensureNotExists(container, stateDir);
+            await ensureNotExists(container, "/mnt/storage/affiliations");
+            expect((await container.exec(["getent", "group", "storage-team"])).exitCode).toBe(2);
+        }
+        for (const path of ["/mnt/storage", "/mnt/storage-other/leaf", "/mnt/storage/../elsewhere"]) {
+            const result = await invoke(false, { ...config, directories: [{ ...config.directories[0], path }] });
+            expect(result.exitCode).toBe(1);
+            expect(result.stderr).toContain("strictly under a storage root");
+        }
+        for (const roots of [["/"], ["//"], ["/mnt/.."]]) {
+            const result = await invoke(false, { ...config, roots });
+            expect(result.exitCode).toBe(1);
+            expect(result.stderr).toContain("Storage root cannot be /");
+            await ensureNotExists(container, stateDir);
+        }
+
         const link = "/mnt/storage/link";
         expect((await container.exec(["ln", "-s", "/mnt/storage/unrelated", link])).exitCode).toBe(0);
         const symlink = await invoke(false, {
@@ -99,7 +126,7 @@ test("provisions and locks storage directories without touching user accounts", 
         await ensureNotExists(container, "/mnt/storage/users");
         expect((await container.exec(["getent", "group", "storage-team"])).exitCode).toBe(2);
 
-        expect((await invoke(false, { directories: [] })).exitCode).toBe(0);
+        expect((await invoke(false, { roots: config.roots, directories: [] })).exitCode).toBe(0);
         expect((await container.exec(["cat", stateFile])).stdout).toBe("{}");
         const rootStat = async () => {
             const result = await container.exec(["stat", "--format", "%a %u %g %z", "/"]);

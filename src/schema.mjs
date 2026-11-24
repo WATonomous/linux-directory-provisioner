@@ -134,6 +134,11 @@ const idOrName = { anyOf: [linuxId, linuxName] };
 export const validateStorageConfig = ajv.compile({
   type: "object",
   properties: {
+    roots: {
+      type: "array",
+      minItems: 1,
+      items: { type: "string", pattern: "^/[^\\x00]*$" },
+    },
     groups: {
       type: "array",
       items: {
@@ -157,6 +162,6 @@ export const validateStorageConfig = ajv.compile({
       },
     },
   },
-  required: ["directories"],
+  required: ["roots", "directories"],
   additionalProperties: false,
 });
