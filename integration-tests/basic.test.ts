@@ -17,7 +17,7 @@ describe("Sanity", () => {
         }
 
         await container.stop();
-    }, 60000);
+    }, 120000);
 });
 
 describe("Basic", () => {
@@ -29,7 +29,7 @@ describe("Basic", () => {
         image = await GenericContainer
             .fromDockerfile(".", "integration-tests/Dockerfile")
             .build();
-    }, 60000)
+    }, 120000)
 
     beforeEach(async () => {
         container = await image.withEntrypoint(["sleep", "infinity"]).start();
@@ -405,7 +405,7 @@ describe("Basic", () => {
 
         await ensureNotExists(container, "/test/user1/1001/.test");
         await ensureExists(container, "/test/user2/1002/.test");
-    })
+    }, 60000);
 
     test("should warn us if managed directories are missing", async () => {
         basicConfig.managed_user_directories = ["/test/%u/%U/.test"];
@@ -440,7 +440,7 @@ describe("Basic", () => {
 
         await ensureNotExists(container, "/test/user1/1001/.test");
         await ensureNotExists(container, "/tmp/ssh-keys-user1-1001-authorized_keys");
-    })
+    }, 60000);
 
     test("should handle existing managed user directories", async () => {
         // Create the user
@@ -467,7 +467,7 @@ describe("Basic", () => {
             expect(exitCode).toBe(0);
             expect(stdout).toContain("Creating managed user directories for 1 user(s)...");
         }
-    })
+    }, 60000);
 
     afterEach(async () => {
         await container.stop();

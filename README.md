@@ -14,6 +14,35 @@ Tool to provision Linux users and groups. Useful for provisioning a large number
 npx @watonomous/linux-directory-provisioner@^0.0.6 --config=path_to_config.json
 ```
 
+## Storage mode
+
+Run the provisioner as root on the storage server with `--storage`. Pass one
+complete storage config for the host. Use `--dry-run` to preview changes and
+`--no-confirm` to apply them unattended.
+
+```bash
+provision-directory --storage --no-confirm --config - < storage.json
+```
+
+```json
+{
+  "groups": [{ "groupname": "robotics", "gid": 23001 }],
+  "directories": [
+    { "path": "/mnt/wato-drive2-export/users/alex", "owner": 21001, "group": 21001, "mode": "0700" },
+    { "path": "/mnt/wato-drive2-export/affiliations/robotics", "owner": "root", "group": "robotics", "mode": "2775" }
+  ]
+}
+```
+
+Use absolute, symlink-free paths with one row per folder. Missing parents are
+created as `0755 root:root`. Owners and groups can use numeric IDs or names that resolve
+on the storage server. Numeric ownership can refer to users with no local
+account. Give each mode as a quoted string of three or four octal digits, such as
+`"750"` or `"0770"`. The optional
+`groups` list creates missing groups with the specified GIDs and reuses existing
+groups only if their GIDs match. A GID mismatch stops the run before any changes.
+Concurrent applies are refused while another run holds the lock.
+
 ## Publishing to NPM
 
 1. Increment the version number in `package.json`:

@@ -126,3 +126,37 @@ export const configSchema = {
 const ajv = new Ajv({ allErrors: true, strict: true, useDefaults: true });
 
 export const validateConfig = ajv.compile(configSchema);
+
+const linuxId = { type: "integer", minimum: 0, maximum: 4294967294 };
+const linuxName = { type: "string", minLength: 1, pattern: "^[^:\\x00-\\x20/]+$" };
+const idOrName = { anyOf: [linuxId, linuxName] };
+
+export const validateStorageConfig = ajv.compile({
+  type: "object",
+  properties: {
+    groups: {
+      type: "array",
+      items: {
+        ...groupSchema,
+        properties: { groupname: { ...linuxName, not: { pattern: "^\\d+$" } }, gid: linuxId },
+      },
+      default: [],
+    },
+    directories: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          path: { type: "string", pattern: "^/[^\\x00]+$" },
+          owner: idOrName,
+          group: idOrName,
+          mode: { type: "string", pattern: "^[0-7]{3,4}$" },
+        },
+        required: ["path", "owner", "group", "mode"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["directories"],
+  additionalProperties: false,
+});
