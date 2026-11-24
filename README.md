@@ -41,7 +41,28 @@ account. Give each mode as a quoted string of three or four octal digits, such a
 `"750"` or `"0770"`. The optional
 `groups` list creates missing groups with the specified GIDs and reuses existing
 groups only if their GIDs match. A GID mismatch stops the run before any changes.
-Concurrent applies are refused while another run holds the lock.
+
+The provisioner records managed paths and their configured modes in
+`/var/lib/linux-directory-provisioner/storage.json`. The first apply creates the
+state directory and file. If the directory already exists and the file is missing,
+the run fails. If a first apply was interrupted before writing the file, remove the
+empty state directory and run again. Concurrent applies are refused while another
+run holds the lock.
+
+Removing a row locks the
+directory with its configured read and execute bits, clearing write and special bits.
+For example, `0700` becomes `0500`, `0750` becomes `0550`, and `2775` becomes `0555`.
+
+The lock prevents adding or removing entries at the top level. Files and
+subdirectories keep their own permissions, so existing contents can still be
+writable. The directory owner can undo the lock with `chmod`. After locking a
+path, the provisioner stops tracking it. An empty `directories` list locks
+every tracked directory on the host, subject to the lock limit.
+
+The default limit is 10 locks per run. If the plan exceeds the limit, both
+preview and apply list every proposed lock and exit with status 1 before making
+changes. For a deliberate cleanup, pass the same limit to both commands,
+for example `--dry-run --max-locks=11` to preview and `--max-locks=11` to apply.
 
 ## Publishing to NPM
 

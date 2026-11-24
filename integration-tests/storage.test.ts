@@ -1,7 +1,7 @@
 import { GenericContainer } from "testcontainers";
-import { ensureNotExists } from "./utils";
+import { ensureExists, ensureNotExists } from "./utils";
 
-test("provisions storage groups and directories without touching user accounts", async () => {
+test("provisions and locks storage directories without touching user accounts", async () => {
     const image = await GenericContainer
         .fromDockerfile(".", "integration-tests/Dockerfile")
         .build();
@@ -35,15 +35,20 @@ test("provisions storage groups and directories without touching user accounts",
             ],
         };
         const stateDir = "/var/lib/linux-directory-provisioner";
-        const invoke = async (dryRun = false, input: unknown = config, holdLock = false) => (
+        const stateFile = `${stateDir}/storage.json`;
+        const writeContainerFile = async (target: string, content: string) => {
+            expect((await container.exec(["sh", "-ec", 'printf "%s" "$1" > "$2"', "storage", content, target])).exitCode).toBe(0);
+        };
+        const invoke = async (dryRun = false, input: unknown = config, options: { holdLock?: boolean, maxLocks?: number } = {}) => (
             container.exec([
                 "sh", "-ec", `
                     export PATH="/tmp/account-guards:/app/node_modules/.bin:$PATH"
                     umask 077
                     printf "%s" "$1" > /app/storage.json
                     shift
-                    ${holdLock ? `flock ${stateDir}` : ""} provision-directory --storage --no-confirm --config - "$@" < /app/storage.json
+                    ${options.holdLock ? `flock ${stateDir}` : ""} provision-directory --storage --no-confirm --config - "$@" < /app/storage.json
                 `, "storage", JSON.stringify(input), ...(dryRun ? ["--dry-run"] : []),
+                ...(options.maxLocks === undefined ? [] : [`--max-locks=${options.maxLocks}`]),
             ])
         );
         const run = async (dryRun = false) => {
@@ -83,14 +88,50 @@ test("provisions storage groups and directories without touching user accounts",
         expect((await container.exec(["getent", "group", "storage-team"])).exitCode).toBe(2);
         await ensureNotExists(container, "/mnt/storage/affiliations");
         await ensureNotExists(container, "/mnt/storage/users");
+        await ensureNotExists(container, stateDir);
 
         expect((await container.exec(["mkdir", "-m", "0700", stateDir])).exitCode).toBe(0);
-        const busy = await invoke(false, config, true);
+        const missing = await invoke();
+        expect(missing.exitCode).toBe(1);
+        expect(missing.stderr).toContain(`Missing storage state file: ${stateFile}`);
+        expect((await container.exec(["rmdir", stateDir])).exitCode).toBe(0);
+        await ensureNotExists(container, "/mnt/storage/affiliations");
+        await ensureNotExists(container, "/mnt/storage/users");
+        expect((await container.exec(["getent", "group", "storage-team"])).exitCode).toBe(2);
+
+        expect((await invoke(false, { directories: [] })).exitCode).toBe(0);
+        expect((await container.exec(["cat", stateFile])).stdout).toBe("{}");
+        const rootStat = async () => {
+            const result = await container.exec(["stat", "--format", "%a %u %g %z", "/"]);
+            expect(result.exitCode).toBe(0);
+            return result.stdout;
+        };
+        const rootBefore = await rootStat();
+        for (const contents of [
+            '{"":493}', '{"/":493}', '{"relative":493}', '{"/mnt/../tmp":493}', '[]', 'null',
+            '{"/mnt":"493"}', '{"/mnt":-1}', '{"/mnt":4096}', '{"/mnt":1.5}',
+        ]) {
+            await writeContainerFile(stateFile, contents);
+            const invalid = await invoke();
+            expect(invalid.exitCode).toBe(1);
+            expect(invalid.stderr).toContain("Invalid storage state");
+            expect((await container.exec(["cat", stateFile])).stdout).toBe(contents);
+        }
+        expect(await rootStat()).toBe(rootBefore);
+        await ensureNotExists(container, "/mnt/storage/affiliations");
+        await ensureNotExists(container, "/mnt/storage/users");
+        expect((await container.exec(["getent", "group", "storage-team"])).exitCode).toBe(2);
+        await writeContainerFile(stateFile, "{}");
+
+        const busy = await invoke(false, config, { holdLock: true });
         expect(busy.exitCode).toBe(1);
         expect(busy.stderr).toContain("another run is active");
+        expect((await container.exec(["cat", stateFile])).stdout).toBe("{}");
         await ensureNotExists(container, "/mnt/storage/affiliations");
         expect((await container.exec(["getent", "group", "storage-team"])).exitCode).toBe(2);
 
+        // A checkpoint from the previous release must never be treated as a managed path.
+        await writeContainerFile(stateFile, JSON.stringify({ pendingParent: { path: "/mnt/storage/unrelated" } }));
         expect(await run()).toBe(`Created groups ["storage-team"]\nCreated directories ["${team}","${personal}","${retained}"]`);
         expect((await container.exec(["getent", "group", "storage-team", "root"])).stdout.trim())
             .toBe("storage-team:x:23145:\nroot:x:0:");
@@ -106,6 +147,71 @@ test("provisions storage groups and directories without touching user accounts",
         expect(await run()).toBe("No changes");
         expect(await run(true)).toBe("No changes");
         expect(await ctimes()).toBe(beforeNoop);
+
+        const asMember = (...args: string[]) => container.exec([
+            "setpriv", "--reuid", "21345", "--regid", "23145", "--clear-groups", ...args,
+        ]);
+        expect((await asMember("ls", personal)).stderr).toContain("Permission denied");
+        expect((await asMember("touch", `${team}/before-lock`)).exitCode).toBe(0);
+        const written = await container.exec(["touch", `${team}/keep.txt`, `${personal}/keep.txt`]);
+        expect(written.exitCode).toBe(0);
+        const departed = config.directories.splice(0, 2);
+        config.groups = [];
+        expect(await run(true)).toBe(`Directories to lock ["${team}","${personal}"]`);
+        expect(await stat(team, personal)).toEqual(["2775 21345 23145", "700 0 23145"]);
+
+        expect(await run()).toBe(`Locked directories ["${team}","${personal}"]`);
+        expect(await stat(team, personal, retained)).toEqual(["555 21345 23145", "500 0 23145", "750 0 0"]);
+        const denied = await asMember("touch", `${team}/after-lock`);
+        expect(denied.exitCode).toBe(1);
+        expect(denied.stderr).toContain("Permission denied");
+        expect((await asMember("ls", personal)).stderr).toContain("Permission denied");
+        expect((await asMember("sh", "-c", 'echo kept >> "$1"', "storage", `${team}/before-lock`)).exitCode).toBe(0);
+        await ensureExists(container, `${team}/keep.txt`);
+        await ensureExists(container, `${personal}/keep.txt`);
+        expect(await stat("/mnt/storage/unrelated")).toEqual(["755 0 0"]);
+        expect((await container.exec(["getent", "group", "storage-team"])).exitCode).toBe(0);
+        expect(await run()).toBe("No changes");
+
+        const remaining = config.directories.splice(0);
+        expect(await run()).toBe(`Locked directories ["${retained}"]`);
+        expect(await stat(retained)).toEqual(["550 0 0"]);
+        expect((await asMember("chmod", "0755", team)).exitCode).toBe(0);
+        expect(await run()).toBe("No changes");
+        expect(await stat(team)).toEqual(["755 21345 23145"]);
+        config.directories.push(...remaining);
+        expect(await run()).toBe(`Updated directories ["${retained}"]`);
+
+        config.directories.push(...departed);
+        expect(await run()).toBe(`Updated directories ["${team}","${personal}"]`);
+        expect(await stat(team, personal)).toEqual(["2775 21345 23145", "700 0 23145"]);
+
+        const batch = Array.from({ length: 11 }, (_, i) => ({
+            path: `/mnt/storage/batch/dir-${i}`, owner: 0, group: 0, mode: "0700",
+        }));
+        const batchPaths = batch.map(({ path }) => path);
+        const withBatch = (rows: typeof batch) => ({ ...config, directories: [...config.directories, ...rows] });
+        expect((await invoke(false, withBatch(batch))).exitCode).toBe(0);
+        const readState = () => container.exec(["cat", stateFile]);
+        const beforeBatch = (await readState()).stdout;
+        const extra = "/mnt/storage/should-not-be-created";
+        for (const dryRun of [true, false]) {
+            const refused = await invoke(dryRun, withBatch([{ ...batch[0], path: extra }]));
+            expect(refused.exitCode).toBe(1);
+            expect(refused.stderr).toContain(`Refusing to lock 11 directories (--max-locks=10): ${JSON.stringify(batchPaths)}`);
+            expect((await readState()).stdout).toBe(beforeBatch);
+            expect(await stat(...batchPaths)).toEqual(batch.map(() => "700 0 0"));
+            await ensureNotExists(container, extra);
+        }
+        const allowed = await invoke(false, config, { maxLocks: 11 });
+        expect(allowed.exitCode).toBe(0);
+        expect(allowed.stdout.trim()).toBe(`Locked directories ${JSON.stringify(batchPaths)}`);
+        expect(await stat(...batchPaths)).toEqual(batch.map(() => "500 0 0"));
+
+        const ten = batch.slice(0, 10);
+        expect((await invoke(false, withBatch(ten))).exitCode).toBe(0);
+        expect(await run()).toBe(`Locked directories ${JSON.stringify(batchPaths.slice(0, 10))}`);
+        expect(await stat(...batchPaths)).toEqual(batch.map(() => "500 0 0"));
 
         const accountsAfter = await container.exec(["cat", "/etc/passwd", "/etc/shadow"]);
         expect(accountsAfter.exitCode).toBe(0);

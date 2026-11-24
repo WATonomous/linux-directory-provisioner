@@ -1,12 +1,13 @@
 import { execFile, spawnSync } from "node:child_process";
 import { constants } from "node:fs";
-import { mkdir, open } from "node:fs/promises";
+import { mkdir, open, readFile, rename } from "node:fs/promises";
 import { resolve } from "node:path";
 import { isDeepStrictEqual, promisify } from "node:util";
 import { question } from "zx";
 
 const exec = promisify(execFile);
 const stateDirectory = "/var/lib/linux-directory-provisioner";
+const statePath = `${stateDirectory}/storage.json`;
 // eslint-disable-next-line no-bitwise
 const directoryFlags = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
 
@@ -78,13 +79,59 @@ async function resolveId(database, value, knownIds) {
   return id;
 }
 
-async function planStorage(config) {
-  const desired = new Set();
+async function loadState() {
+  const directory = await openDirectory(stateDirectory);
+  if (!directory) return new Map();
+  try {
+    const { uid, mode } = await directory.stat();
+    // eslint-disable-next-line no-bitwise
+    if (uid !== 0 || (mode & 0o022) !== 0) throw new Error(`Unsafe storage state directory: ${stateDirectory}`);
+    const contents = await readFile(`/proc/self/fd/${directory.fd}/storage.json`, "utf8");
+    const data = JSON.parse(contents);
+    if (data === null || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error(`Invalid storage state: expected an object in ${statePath}`);
+    }
+    const state = new Map(Object.entries(data));
+    state.delete("pendingParent"); // Ignore checkpoints written by older versions.
+    for (const [path, savedMode] of state) {
+      if (path === "/" || path.includes("\0") || resolve(path) !== path) {
+        throw new Error(`Invalid storage state path: ${JSON.stringify(path)}`);
+      }
+      if (!Number.isInteger(savedMode) || savedMode < 0 || savedMode > 0o7777) {
+        throw new Error(`Invalid storage state mode for ${path}`);
+      }
+    }
+    return state;
+  } catch (error) {
+    if (error.code === "ENOENT") throw new Error(`Missing storage state file: ${statePath}`, { cause: error });
+    throw error;
+  } finally {
+    await directory.close();
+  }
+}
+
+async function saveState(state, stateDir) {
+  const temporary = `${statePath}.tmp`;
+  const file = await open(temporary, "w", 0o600);
+  try {
+    await file.writeFile(JSON.stringify(Object.fromEntries(state)));
+    await file.sync();
+  } finally {
+    await file.close();
+  }
+  await rename(temporary, statePath);
+  await stateDir.sync();
+}
+
+async function planStorage(config, maxLocks) {
+  const previous = await loadState();
+  const desired = new Map();
   const groups = new Map();
   const owners = new Map();
   const newGroups = [];
   const newGids = new Set();
   const directories = [];
+  const locked = [];
 
   for (const { groupname, gid } of config.groups) {
     if (groups.has(groupname)) throw new Error(`Duplicate storage group: ${groupname}`);
@@ -107,8 +154,8 @@ async function planStorage(config) {
       throw new Error(`Invalid storage directory: ${row.path}`);
     }
     if (desired.has(path)) throw new Error(`Duplicate storage directory: ${path}`);
-    desired.add(path);
     const mode = parseInt(row.mode, 8);
+    desired.set(path, mode);
 
     const uid = await resolveId("passwd", row.owner, owners);
     const gid = await resolveId("group", row.group, groups);
@@ -119,7 +166,16 @@ async function planStorage(config) {
     }
   }
 
-  return { newGroups, directories };
+  for (const [path, mode] of previous) {
+    if (desired.has(path) || !await directoryStat(path)) continue;
+    // eslint-disable-next-line no-bitwise
+    locked.push({ path, mode: mode & 0o555 });
+  }
+  if (locked.length > maxLocks) {
+    const paths = locked.map(({ path }) => path);
+    throw new Error(`Refusing to lock ${paths.length} directories (--max-locks=${maxLocks}): ${JSON.stringify(paths)}`);
+  }
+  return { previous, desired, newGroups, directories, locked };
 }
 
 function summary(plan, planned) {
@@ -127,6 +183,7 @@ function summary(plan, planned) {
     ["Groups to create", "Created groups", plan.newGroups.map(({ groupname }) => groupname)],
     ["Directories to create", "Created directories", plan.directories.filter(({ create }) => create).map(({ path }) => path)],
     ["Directories to update", "Updated directories", plan.directories.filter(({ create }) => !create).map(({ path }) => path)],
+    ["Directories to lock", "Locked directories", plan.locked.map(({ path }) => path)],
   ];
   return changes.filter(([, , items]) => items.length).map(([future, past, items]) => (
     `${planned ? future : past} ${JSON.stringify(items)}`
@@ -137,11 +194,15 @@ async function printSummary(lines) {
   await new Promise((done) => { process.stdout.write(`${lines.join("\n")}\n`, done); });
 }
 
-async function applyStorage({ newGroups, directories }) {
+async function applyStorage({ previous, desired, newGroups, directories, locked }, stateDir) {
   process.umask(0o022);
   for (const { groupname, gid } of newGroups) {
     await exec("groupadd", ["--gid", String(gid), "--", groupname]);
   }
+
+  // Record enrolled paths before touching them so an interrupted apply cannot lose track of one.
+  const state = new Map([...previous, ...desired]);
+  if ([...desired].some(([path, mode]) => previous.get(path) !== mode)) await saveState(state, stateDir);
 
   for (const { path, uid, gid, mode } of directories) {
     const directory = await openDirectory(path, true);
@@ -153,29 +214,46 @@ async function applyStorage({ newGroups, directories }) {
       await directory.close();
     }
   }
+
+  for (const { path, mode } of locked) {
+    const directory = await openDirectory(path);
+    if (!directory) continue;
+    try {
+      await directory.chmod(mode);
+      state.delete(path);
+    } finally {
+      await directory.close();
+    }
+  }
+  if (locked.length) await saveState(state, stateDir);
 }
 
 export default async function provisionStorage(config, argv) {
+  const limit = argv["max-locks"] ?? 10;
+  const maxLocks = typeof limit === "string" && /^\d+$/.test(limit) ? Number(limit) : limit;
+  if (!Number.isSafeInteger(maxLocks) || maxLocks < 0) throw new Error("--max-locks must be a non-negative integer");
   let preview;
   if (argv["dry-run"] || argv.confirm !== false) {
-    preview = await planStorage(config);
+    preview = await planStorage(config, maxLocks);
     const lines = summary(preview, true);
     await printSummary(lines.length ? lines : ["No changes"]);
     if (argv["dry-run"]) return 0;
     if (lines.length && await question("Are you sure you want to apply these changes? [y/N] ") !== "y") return 1;
   }
 
-  if (!preview) await planStorage(config);
-  await mkdir(stateDirectory, { mode: 0o700, recursive: true });
+  // Reject an invalid first run before creating the state directory.
+  if (!preview && !await directoryStat(stateDirectory)) await planStorage(config, maxLocks);
+  const created = await mkdir(stateDirectory, { mode: 0o700, recursive: true });
   const directory = await open(stateDirectory, directoryFlags);
   try {
     // flock locks the inherited open file description until this handle is closed.
     const lock = spawnSync("flock", ["--nonblock", "3"], { stdio: ["ignore", "ignore", "pipe", directory.fd] });
     if (lock.error) throw lock.error;
     if (lock.status !== 0) throw new Error(`Cannot lock storage state: ${lock.stderr.toString().trim() || "another run is active"}`);
-    const plan = await planStorage(config);
+    if (created) await saveState(new Map(), directory);
+    const plan = await planStorage(config, maxLocks);
     if (preview && !isDeepStrictEqual(preview, plan)) throw new Error("Storage plan changed during confirmation. Run again to review it.");
-    await applyStorage(plan);
+    await applyStorage(plan, directory);
     const lines = summary(plan, false);
     if (lines.length || argv.confirm === false) await printSummary(lines.length ? lines : ["No changes"]);
     return 0;
