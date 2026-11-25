@@ -43,4 +43,5 @@ jobs:
           registry-url: https://registry.npmjs.org/
           package-manager-cache: false
       - run: npm ci
-      - run: npm publish --access public
+      # npm 11 refuses prereleases without --tag; every version so far is a prerelease and `latest` has always pointed at them.
+      - run: npm publish --access public --tag latest
