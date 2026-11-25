@@ -44,4 +44,5 @@ jobs:
           package-manager-cache: false
       - run: npm ci
       # npm 11 refuses prereleases without --tag; every version so far is a prerelease and `latest` has always pointed at them.
-      - run: npm publish --access public --tag latest
+      # npm logs OIDC (trusted publishing) failures only at verbose level.
+      - run: npm publish --access public --tag latest --loglevel verbose
