@@ -80,6 +80,23 @@ describe("Basic", () => {
         expect(stderr).toContain("{ additionalProperty: 'invalid_property' }");
     }, 60000);
 
+    test("should not leave copies of itself in the npx cache after a dry run", async () => {
+        await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
+
+        {
+            const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--dry-run", "--config", "/app/config.json"]);
+            expect(exitCode).toBe(0);
+            expect(stdout).toContain("Dry run. exiting");
+        }
+
+        // https://github.com/WATonomous/infra-config/issues/6203
+        {
+            const { output, stdout, stderr, exitCode } = await container.exec(["find", "/root/.npm/_npx", "-name", "provision-directory*.mjs"]);
+            expect(exitCode).toBe(0);
+            expect(stdout).toBe("");
+        }
+    }, 60000);
+
     test("should create users according to config", async () => {
         await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
 
