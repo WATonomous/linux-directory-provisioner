@@ -15,6 +15,10 @@
   },
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/WATonomous/linux-directory-provisioner.git"
+  },
   "dependencies": {
     "ajv": "^8.12.0",
     "zx": "^7.2.3"
