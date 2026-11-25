@@ -80,6 +80,23 @@ describe("Basic", () => {
         expect(stderr).toContain("{ additionalProperty: 'invalid_property' }");
     }, 60000);
 
+    test("should not leave copies of itself in the npx cache after a dry run", async () => {
+        await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
+
+        {
+            const { output, stdout, stderr, exitCode } = await container.exec(["npx", "--yes", "dist.tgz", "--dry-run", "--config", "/app/config.json"]);
+            expect(exitCode).toBe(0);
+            expect(stdout).toContain("Dry run. exiting");
+        }
+
+        // https://github.com/WATonomous/infra-config/issues/6203
+        {
+            const { output, stdout, stderr, exitCode } = await container.exec(["find", "/root/.npm/_npx", "-name", "provision-directory*.mjs"]);
+            expect(exitCode).toBe(0);
+            expect(stdout).toBe("");
+        }
+    }, 60000);
+
     test("should create users according to config", async () => {
         await container.copyContentToContainer([{ content: JSON.stringify(basicConfig), target: "/app/config.json" }]);
 
@@ -405,7 +422,7 @@ describe("Basic", () => {
 
         await ensureNotExists(container, "/test/user1/1001/.test");
         await ensureExists(container, "/test/user2/1002/.test");
-    })
+    }, 60000);
 
     test("should warn us if managed directories are missing", async () => {
         basicConfig.managed_user_directories = ["/test/%u/%U/.test"];
@@ -440,7 +457,7 @@ describe("Basic", () => {
 
         await ensureNotExists(container, "/test/user1/1001/.test");
         await ensureNotExists(container, "/tmp/ssh-keys-user1-1001-authorized_keys");
-    })
+    }, 60000);
 
     test("should handle existing managed user directories", async () => {
         // Create the user
@@ -467,7 +484,7 @@ describe("Basic", () => {
             expect(exitCode).toBe(0);
             expect(stdout).toContain("Creating managed user directories for 1 user(s)...");
         }
-    })
+    }, 60000);
 
     afterEach(async () => {
         await container.stop();

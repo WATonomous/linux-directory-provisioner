@@ -1,6 +1,6 @@
 {
   "name": "@watonomous/linux-directory-provisioner",
-  "version": "0.0.6-alpha.1",
+  "version": "0.0.6-alpha.2",
   "description": "A tool to provision linux users and groups",
   "main": "dist/index.mjs",
   "bin": {
@@ -9,7 +9,7 @@
   "scripts": {
     "start": "zx src/index.mjs",
     "lint": "eslint src/**/*.mjs",
-    "transpile": "esbuild src/index.mjs --format=esm --bundle --platform=node --target=node20 --outfile=dist/index.mjs",
+    "transpile": "esbuild src/index.mjs --format=esm --bundle --platform=node --target=node20 --outfile=dist/index.mjs \"--banner:js=import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\"",
     "prepack": "npm run transpile",
     "test": "jest"
   },
