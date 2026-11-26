@@ -18,15 +18,17 @@ import {
   QUOTA_BLOCK_SIZE,
   doesPathExist
 } from "./utils.mjs";
-import { validateConfig } from "./schema.mjs";
+import { validateConfig, validateStorageConfig } from "./schema.mjs";
+import provisionStorage from "./storage.mjs";
 
 function printUsageAndExit(exitCode = 0) {
-  console.error("Usage: $0 [--help] [--dry-run] [--no-confirm] [--debug] --config=config.json");
+  console.error("Usage: $0 [--help] [--dry-run] [--no-confirm] [--debug] [--storage] --config=config.json");
   process.exit(exitCode);
 }
 
 if (argv.debug) {
-  console.log("argv:", argv);
+  if (argv.storage) console.error("argv:", argv);
+  else console.log("argv:", argv);
 }
 if (argv.help) {
   printUsageAndExit(0);
@@ -36,19 +38,30 @@ if (!argv.config) {
   printUsageAndExit(1);
 }
 
+function readConfig() {
+  return (argv.config === "-" ? stdin() : readFile(argv.config, "utf8")).then(JSON.parse);
+}
+
+if (argv.storage) {
+  const storageConfig = await readConfig();
+  if (!validateStorageConfig(storageConfig)) {
+    console.error("Invalid storage config:", validateStorageConfig.errors);
+    process.exit(1);
+  }
+  process.exit(await provisionStorage(storageConfig, argv));
+}
+
 // =====================================================
 // Load, validate, and parse config
 // =====================================================
 
 console.time("readConfig");
-let config;
 if (argv.config === "-") {
   console.log("Reading config from stdin...");
-  config = await stdin().then(JSON.parse);
 } else {
   console.log(`Reading config from ${argv.config}...`);
-  config = await readFile(argv.config, "utf8").then(JSON.parse);
 }
+const config = await readConfig();
 console.timeLog("readConfig");
 
 console.log("Validating config");

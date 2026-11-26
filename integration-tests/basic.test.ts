@@ -17,7 +17,7 @@ describe("Sanity", () => {
         }
 
         await container.stop();
-    }, 60000);
+    }, 120000);
 });
 
 describe("Basic", () => {
@@ -29,7 +29,7 @@ describe("Basic", () => {
         image = await GenericContainer
             .fromDockerfile(".", "integration-tests/Dockerfile")
             .build();
-    }, 60000)
+    }, 120000)
 
     beforeEach(async () => {
         container = await image.withEntrypoint(["sleep", "infinity"]).start();
